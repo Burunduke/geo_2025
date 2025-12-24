@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Городская инфраструктура</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Боковая панель -->
+        <div class="sidebar">
+            <h1>🗺️ Городская карта</h1>
+            
+            <div class="panel">
+                <h3>Поиск в радиусе</h3>
+                <input type="number" id="radius" placeholder="Радиус (м)" value="1000">
+                <select id="objectType">
+                    <option value="">Все типы</option>
+                    <option value="hospital">Больницы</option>
+                    <option value="school">Школы</option>
+                    <option value="cafe">Кафе</option>
+                    <option value="parking">Парковки</option>
+                    <option value="pharmacy">Аптеки</option>
+                </select>
+                <button onclick="searchNearby()">Искать</button>
+            </div>
+            
+            <div class="panel">
+                <h3>Ближайший объект</h3>
+                <select id="nearestType">
+                    <option value="">Любой тип</option>
+                    <option value="hospital">Больница</option>
+                    <option value="school">Школа</option>
+                    <option value="cafe">Кафе</option>
+                </select>
+                <button onclick="findNearest()">Найти</button>
+            </div>
+            
+            <div class="panel">
+                <h3>Слои карты</h3>
+                <label><input type="checkbox" id="showObjects" checked> Объекты</label><br>
+                <label><input type="checkbox" id="showEvents" checked> События</label><br>
+                <label><input type="checkbox" id="showDistricts"> Районы</label>
+            </div>
+            
+            <div id="results" class="results"></div>
+        </div>
+        
+        <!-- Карта -->
+        <div id="map"></div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="js/api.js"></script>
+    <script src="js/map.js"></script>
+</body>
+</html>
