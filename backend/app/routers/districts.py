@@ -1,4 +1,105 @@
-# 4️⃣ События в районе
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func, text
+from geoalchemy2.functions import ST_Distance, ST_DWithin, ST_AsGeoJSON, ST_MakePoint, ST_Within, ST_Buffer, ST_Intersects, ST_Area, ST_Transform, ST_SetSRID
+from typing import List, Optional
+import json
+from ..database import get_db
+from ..models import District, Event, Object
+from ..schemas import DistrictResponse
+
+router = APIRouter()
+
+# Получить все районы
+@router.get("/", response_model=List[DistrictResponse])
+def get_districts(db: Session = Depends(get_db)):
+    """Получить все районы"""
+    districts = db.query(
+        District.id,
+        District.name,
+        District.population,
+        func.ST_AsGeoJSON(District.geom).label('geometry')
+    ).all()
+    
+    return [
+        DistrictResponse(
+            id=d.id,
+            name=d.name,
+            population=d.population,
+            geometry=json.loads(d.geometry)
+        )
+        for d in districts
+    ]
+
+# Найти район по точке
+@router.get("/find")
+def find_district_by_point(
+    lat: float = Query(..., description="Широта"),
+    lon: float = Query(..., description="Долгота"),
+    db: Session = Depends(get_db)
+):
+    """Определить, в каком районе находится точка"""
+    user_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
+    
+    district = db.query(District).filter(
+        func.ST_Contains(District.geom, user_point)
+    ).first()
+    
+    if not district:
+        raise HTTPException(status_code=404, detail="Точка не принадлежит ни одному району")
+    
+    return {
+        "id": district.id,
+        "name": district.name,
+        "population": district.population
+    }
+
+# Объекты в районе
+@router.get("/{district_id}/objects")
+def get_objects_in_district(
+    district_id: int,
+    object_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Получить все объекты в районе"""
+    district = db.query(District).filter(District.id == district_id).first()
+    
+    if not district:
+        raise HTTPException(status_code=404, detail="Район не найден")
+    
+    query = db.query(
+        Object.id,
+        Object.name,
+        Object.type,
+        Object.address,
+        func.ST_X(Object.geom).label('lon'),
+        func.ST_Y(Object.geom).label('lat')
+    ).filter(
+        func.ST_Within(Object.geom, district.geom)
+    )
+    
+    if object_type:
+        query = query.filter(Object.type == object_type)
+    
+    objects = query.all()
+    
+    return {
+        "district": district.name,
+        "count": len(objects),
+        "objects": [
+            {
+                "id": obj.id,
+                "name": obj.name,
+                "type": obj.type,
+                "address": obj.address,
+                "lat": obj.lat,
+                "lon": obj.lon
+            }
+            for obj in objects
+        ]
+    }
+
+# События в районе
 @router.get("/{district_id}/events")
 def get_events_in_district(
     district_id: int,
@@ -47,7 +148,7 @@ def get_events_in_district(
         ]
     }
 
-# 5️⃣ Статистика по району
+# Статистика по району
 @router.get("/{district_id}/stats")
 def get_district_stats(district_id: int, db: Session = Depends(get_db)):
     """Получить статистику по району"""
@@ -72,7 +173,7 @@ def get_district_stats(district_id: int, db: Session = Depends(get_db)):
         func.ST_Within(Event.geom, district.geom)
     ).group_by(Event.event_type).all()
     
-    # Площадь района в км²
+    # Площадь района
     area = db.query(
         func.ST_Area(func.ST_Transform(district.geom, 3857)) / 1000000
     ).scalar()
@@ -87,7 +188,7 @@ def get_district_stats(district_id: int, db: Session = Depends(get_db)):
         "total_events": sum(t[1] for t in event_stats)
     }
 
-# 6️⃣ Буферная зона вокруг района
+# Буферная зона вокруг района
 @router.get("/{district_id}/buffer")
 def get_district_buffer(
     district_id: int,
@@ -118,7 +219,7 @@ def get_district_buffer(
         "geometry": json.loads(buffer)
     }
 
-# 7️⃣ Пересечение районов с объектами в радиусе
+# Пересечение районов с объектами в радиусе
 @router.get("/intersect")
 def get_districts_intersecting_point(
     lat: float = Query(...),

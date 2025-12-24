@@ -9,7 +9,7 @@ from ..schemas import ObjectResponse, ObjectCreate, NearbyObjectsRequest
 
 router = APIRouter()
 
-# 1️⃣ Получить все объекты
+# Получить все объекты
 @router.get("/", response_model=List[ObjectResponse])
 def get_objects(
     object_type: Optional[str] = None,
@@ -44,7 +44,7 @@ def get_objects(
         for obj in objects
     ]
 
-# 2️⃣ Найти объекты в радиусе
+# Найти объекты в радиусе
 @router.post("/nearby")
 def get_nearby_objects(
     request: NearbyObjectsRequest,
@@ -95,7 +95,7 @@ def get_nearby_objects(
         ]
     }
 
-# 3️⃣ Найти ближайший объект
+# Найти ближайший объект
 @router.get("/nearest")
 def get_nearest_object(
     lat: float = Query(..., description="Широта"),
@@ -137,7 +137,7 @@ def get_nearest_object(
         "distance": round(result.distance, 2)
     }
 
-# 4️⃣ Создать новый объект
+# Создать новый объект
 @router.post("/", response_model=ObjectResponse)
 def create_object(
     obj: ObjectCreate,
@@ -165,7 +165,7 @@ def create_object(
         created_at=new_object.created_at
     )
 
-# 5️⃣ Получить типы объектов
+# Получить типы объектов
 @router.get("/types")
 def get_object_types(db: Session = Depends(get_db)):
     """Получить список всех типов объектов"""

@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # PostgreSQL с PostGIS
   db:
     image: postgis/postgis:15-3.3
     container_name: city_geo_db
@@ -22,8 +21,6 @@ services:
       retries: 5
     networks:
       - city_geo_network
-
-  # Backend (FastAPI)
   backend:
     build: ./backend
     container_name: city_geo_backend
@@ -39,8 +36,6 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - city_geo_network
-
-  # Frontend (Nginx)
   frontend:
     build: ./frontend
     container_name: city_geo_frontend

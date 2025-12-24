@@ -1,5 +1,3 @@
-// api.js - Работа с Backend API
-
 const API_BASE_URL = '/api';
 
 class CityGeoAPI {
@@ -7,7 +5,6 @@ class CityGeoAPI {
         this.baseUrl = baseUrl;
     }
 
-    // Базовый метод для запросов
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         try {
@@ -30,7 +27,7 @@ class CityGeoAPI {
         }
     }
 
-    // === ОБЪЕКТЫ ===
+    // Объекты
     
     async getObjects(type = null) {
         const params = type ? `?object_type=${type}` : '';
@@ -72,7 +69,7 @@ class CityGeoAPI {
         return this.request('/objects/types');
     }
 
-    // === СОБЫТИЯ ===
+    // События
     
     async getEvents(type = null, activeOnly = false) {
         const params = new URLSearchParams();
@@ -107,7 +104,7 @@ class CityGeoAPI {
         return this.request('/events/types');
     }
 
-    // === РАЙОНЫ ===
+    // Районы
     
     async getDistricts() {
         return this.request('/districts/');
@@ -142,5 +139,4 @@ class CityGeoAPI {
     }
 }
 
-// Экспорт для использования
 const api = new CityGeoAPI();

@@ -1,12 +1,7 @@
--- init.sql
--- Инициализация базы данных City Geo App
-
 -- Включаем PostGIS расширение
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- ============================================
--- ТАБЛИЦА ОБЪЕКТОВ ИНФРАСТРУКТУРЫ
--- ============================================
+-- Таблица с объектами инфраструктуры
 CREATE TABLE IF NOT EXISTS objects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -22,9 +17,7 @@ CREATE INDEX idx_objects_geom ON objects USING GIST(geom);
 -- Индекс для фильтрации по типу
 CREATE INDEX idx_objects_type ON objects(type);
 
--- ============================================
--- ТАБЛИЦА СОБЫТИЙ
--- ============================================
+-- Таблица с событиями
 CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -43,9 +36,7 @@ CREATE INDEX idx_events_geom ON events USING GIST(geom);
 CREATE INDEX idx_events_type ON events(event_type);
 CREATE INDEX idx_events_start_time ON events(start_time);
 
--- ============================================
--- ТАБЛИЦА РАЙОНОВ
--- ============================================
+-- Таблица с районами
 CREATE TABLE IF NOT EXISTS districts (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -57,7 +48,4 @@ CREATE TABLE IF NOT EXISTS districts (
 -- Пространственный индекс
 CREATE INDEX idx_districts_geom ON districts USING GIST(geom);
 
--- ============================================
--- ПРОВЕРКА УСТАНОВКИ
--- ============================================
 SELECT PostGIS_version();

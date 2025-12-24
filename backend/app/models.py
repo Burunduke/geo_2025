@@ -4,7 +4,7 @@ from datetime import datetime
 from .database import Base
 
 class Object(Base):
-    tablename = "objects"
+    __tablename__ = "objects"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
@@ -14,7 +14,7 @@ class Object(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Event(Base):
-    tablename = "events"
+    __tablename__ = "events"
     
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
@@ -26,7 +26,7 @@ class Event(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class District(Base):
-    tablename = "districts"
+    __tablename__ = "districts"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)

@@ -8,7 +8,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS для работы с frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,7 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключение роутеров
 app.include_router(objects.router, prefix="/api/objects", tags=["Объекты"])
 app.include_router(events.router, prefix="/api/events", tags=["События"])
 app.include_router(districts.router, prefix="/api/districts", tags=["Районы"])

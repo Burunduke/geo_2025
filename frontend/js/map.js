@@ -1,5 +1,3 @@
-// map.js - Инициализация и управление картой
-
 let map;
 let userMarker = null;
 let searchCircle = null;
@@ -9,7 +7,6 @@ let layers = {
     districts: L.layerGroup()
 };
 
-// Иконки для разных типов объектов
 const icons = {
     hospital: L.icon({
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
@@ -61,31 +58,24 @@ const icons = {
     })
 };
 
-// Инициализация карты
 function initMap() {
-    // Создание карты (центр - Москва)
-    map = L.map('map').setView([55.7558, 37.6173], 13);
+    // Создание карты (Санкт-Петербург)
+    map = L.map('map').setView([59.9343, 30.3351], 13);
 
-    // Добавление тайлов OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(map);
 
-    // Добавление слоёв на карту
     layers.objects.addTo(map);
     layers.events.addTo(map);
-    // districts слой добавляется по клику чекбокса
 
-    // Обработчик клика по карте
     map.on('click', onMapClick);
 
-    // Загрузка начальных данных
     loadObjects();
     loadEvents();
     loadDistricts();
 
-    // Обработчики чекбоксов
     document.getElementById('showObjects').addEventListener('change', (e) => {
         if (e.target.checked) {
             map.addLayer(layers.objects);
@@ -111,11 +101,9 @@ function initMap() {
     });
 }
 
-// Клик по карте
 function onMapClick(e) {
     const lat = e.latlng.lat;
     const lon = e.latlng.lng;
-// Установка маркера пользователя
     if (userMarker) {
         userMarker.setLatLng([lat, lon]);
     } else {
@@ -132,11 +120,9 @@ function onMapClick(e) {
         userMarker.bindPopup('Ваше местоположение').openPopup();
     }
 
-    // Определение района
     findDistrict(lat, lon);
 }
 
-// Загрузка объектов
 async function loadObjects() {
     try {
         const objects = await api.getObjects();
@@ -162,7 +148,6 @@ async function loadObjects() {
     }
 }
 
-// Загрузка событий
 async function loadEvents() {
     try {
         const events = await api.getEvents();
@@ -192,7 +177,6 @@ async function loadEvents() {
     }
 }
 
-// Загрузка районов
 async function loadDistricts() {
     try {
         const districts = await api.getDistricts();
@@ -225,7 +209,6 @@ async function loadDistricts() {
     }
 }
 
-// Поиск объектов в радиусе
 async function searchNearby() {
     if (!userMarker) {
         showError('Сначала кликните на карту, чтобы выбрать точку');
@@ -239,19 +222,16 @@ async function searchNearby() {
 try {
         const result = await api.getNearbyObjects(latlng.lat, latlng.lng, radius, objectType);
         
-        // Удаление старого круга
         if (searchCircle) {
             map.removeLayer(searchCircle);
         }
         
-        // Рисование круга поиска
         searchCircle = L.circle([latlng.lat, latlng.lng], {
             radius: radius,
             color: 'blue',
             fillOpacity: 0.1
         }).addTo(map);
 
-        // Отображение результатов
         displayResults(`
             <h4>Найдено объектов: ${result.count}</h4>
             ${result.objects.map(obj => `
@@ -263,7 +243,6 @@ try {
             `).join('')}
         `);
 
-        // Подсветка найденных объектов
         result.objects.forEach(obj => {
             const marker = L.marker([obj.lat, obj.lon], { 
                 icon: icons[obj.type] || icons.hospital
@@ -280,7 +259,6 @@ try {
     }
 }
 
-// Поиск ближайшего объекта
 async function findNearest() {
     if (!userMarker) {
         showError('Сначала кликните на карту, чтобы выбрать точку');
@@ -293,16 +271,13 @@ async function findNearest() {
     try {
         const result = await api.getNearestObject(latlng.lat, latlng.lng, objectType);
         
-        // Рисование линии к ближайшему объекту
         const polyline = L.polyline([
             [latlng.lat, latlng.lng],
             [result.lat, result.lon]
         ], { color: 'red', weight: 3 }).addTo(map);
 
-        // Центрирование карты
         map.fitBounds(polyline.getBounds());
 
-        // Отображение результата
         displayResults(`
             <h4>Ближайший объект</h4>
             <div class="result-item">
@@ -313,7 +288,6 @@ async function findNearest() {
             </div>
         `);
 
-        // Маркер с popup
         L.marker([result.lat, result.lon], { 
             icon: icons[result.type] || icons.hospital
         }).addTo(map).bindPopup(`
@@ -327,7 +301,6 @@ async function findNearest() {
     }
 }
 
-// Найти район по точке
 async function findDistrict(lat, lon) {
     try {
         const result = await api.findDistrictByPoint(lat, lon);
@@ -337,7 +310,6 @@ async function findDistrict(lat, lon) {
     }
 }
 
-// Показать статистику района
 async function showDistrictStats(districtId) {
     try {
         const stats = await api.getDistrictStats(districtId);
@@ -369,7 +341,6 @@ displayResults(`
     }
 }
 
-// Вспомогательные функции
 function displayResults(html) {
     document.getElementById('results').innerHTML = html;
 }
@@ -402,5 +373,4 @@ function getEventTypeRu(type) {
     return types[type] || type;
 }
 
-// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', initMap);
