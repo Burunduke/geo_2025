@@ -1,4 +1,4 @@
-# Городская геоинформационная система
+# Анализатор событий
 
 Веб-приложение для работы с геопространственными данными города: объекты инфраструктуры, события и районы. Построено на FastAPI, PostgreSQL с PostGIS и Leaflet.
 
@@ -106,7 +106,7 @@ docker-compose exec -T db psql -U geo_user -d city_geo_db < sql/test_data.sql
 ```
 
 Тестовые данные включают:
-- 2 района (Приморский и Центральный)
+- 2 района (Ленинский и Центральный)
 - 13 объектов инфраструктуры
 - 7 событий
 
@@ -237,8 +237,8 @@ curl -X POST "http://localhost:8000/api/objects/" \
     "name": "Новая больница",
     "type": "hospital",
     "address": "ул. Примерная, 1",
-    "lat": 59.9343,
-    "lon": 30.3351
+    "lat": 51.6606,
+    "lon": 39.2003
   }'
 ```
 
@@ -248,8 +248,8 @@ curl -X POST "http://localhost:8000/api/objects/" \
 curl -X POST "http://localhost:8000/api/objects/nearby" \
   -H "Content-Type: application/json" \
   -d '{
-    "lat": 59.9343,
-    "lon": 30.3351,
+    "lat": 51.6606,
+    "lon": 39.2003,
     "radius": 1000,
     "object_type": "hospital"
   }'
@@ -264,8 +264,8 @@ curl -X POST "http://localhost:8000/api/events/" \
     "title": "Ремонт дороги",
     "event_type": "repair",
     "description": "Плановый ремонт",
-    "lat": 59.9343,
-    "lon": 30.3351,
+    "lat": 51.6606,
+    "lon": 39.2003,
     "start_time": "2024-12-25T09:00:00",
     "end_time": "2024-12-25T18:00:00"
   }'

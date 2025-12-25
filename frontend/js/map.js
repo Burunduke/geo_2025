@@ -1,10 +1,44 @@
 let map;
 let userMarker = null;
 let searchCircle = null;
+let currentTileLayer = null;
 let layers = {
     objects: L.layerGroup(),
     events: L.layerGroup(),
     districts: L.layerGroup()
+};
+
+const mapStyles = {
+    osm: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+    },
+    dark: {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 19
+    },
+    light: {
+        url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        attribution: '© OpenStreetMap contributors © CARTO',
+        maxZoom: 19
+    },
+    satellite: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: '© Esri',
+        maxZoom: 19
+    },
+    toner: {
+        url: 'https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}{r}.png',
+        attribution: '© Stamen Design © OpenStreetMap contributors',
+        maxZoom: 19
+    },
+    terrain: {
+        url: 'https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.jpg',
+        attribution: '© Stamen Design © OpenStreetMap contributors',
+        maxZoom: 19
+    }
 };
 
 const icons = {
@@ -59,13 +93,11 @@ const icons = {
 };
 
 function initMap() {
-    // Создание карты (Санкт-Петербург)
-    map = L.map('map').setView([59.9343, 30.3351], 13);
+    // Создание карты (Воронеж)
+    map = L.map('map').setView([51.6606, 39.2003], 13);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-    }).addTo(map);
+    // Установка начального стиля карты
+    setMapStyle('osm');
 
     layers.objects.addTo(map);
     layers.events.addTo(map);
@@ -75,6 +107,11 @@ function initMap() {
     loadObjects();
     loadEvents();
     loadDistricts();
+
+    // Обработчик смены стиля карты
+    document.getElementById('mapStyle').addEventListener('change', (e) => {
+        setMapStyle(e.target.value);
+    });
 
     document.getElementById('showObjects').addEventListener('change', (e) => {
         if (e.target.checked) {
@@ -99,6 +136,22 @@ function initMap() {
             map.removeLayer(layers.districts);
         }
     });
+}
+
+function setMapStyle(styleKey) {
+    // Удаляем текущий слой карты, если он существует
+    if (currentTileLayer) {
+        map.removeLayer(currentTileLayer);
+    }
+
+    // Добавляем новый слой карты
+    const style = mapStyles[styleKey];
+    currentTileLayer = L.tileLayer(style.url, {
+        attribution: style.attribution,
+        maxZoom: style.maxZoom
+    }).addTo(map);
+
+    console.log(`Стиль карты изменён на: ${styleKey}`);
 }
 
 function onMapClick(e) {
