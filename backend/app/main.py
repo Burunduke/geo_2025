@@ -1,11 +1,39 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
 from .routers import objects, events, districts
+from .bot import start_bot, stop_bot
+
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan - startup and shutdown"""
+    # Startup
+    logger.info("Starting application...")
+    try:
+        await start_bot()
+        logger.info("Telegram bot started")
+    except Exception as e:
+        logger.error(f"Failed to start Telegram bot: {e}")
+        logger.warning("Application will continue without bot functionality")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down application...")
+    try:
+        await stop_bot()
+        logger.info("Telegram bot stopped")
+    except Exception as e:
+        logger.error(f"Error stopping Telegram bot: {e}")
 
 app = FastAPI(
     title="City Geo API",
     description="API для работы с городской инфраструктурой и событиями",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -25,7 +53,8 @@ def read_root():
     return {
         "message": "City Geo API",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
+        "telegram_bot": "active"
     }
 
 @app.get("/health")

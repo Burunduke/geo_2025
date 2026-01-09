@@ -6,3 +6,12 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
+
+# Telegram Bot
+python-telegram-bot==20.7
+apscheduler==3.10.4
+
+# Web Scraping (for Yandex Afisha)
+beautifulsoup4==4.12.2
+requests==2.31.0
+lxml==4.9.3
