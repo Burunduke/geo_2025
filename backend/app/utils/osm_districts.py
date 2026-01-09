@@ -18,7 +18,12 @@ class OSMDistrictsImporter:
     Импортер границ районов из OpenStreetMap
     """
     
-    OVERPASS_API = "https://overpass-api.de/api/interpreter"
+    # Multiple Overpass API endpoints for redundancy
+    OVERPASS_APIS = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.nchc.org.tw/api/interpreter"
+    ]
     NOMINATIM_API = "https://nominatim.openstreetmap.org"
     
     def __init__(self, city: str = "Воронеж", country: str = "Россия"):
@@ -52,59 +57,86 @@ class OSMDistrictsImporter:
         out geom;
         """
         
-        max_retries = 3
+        max_retries = 2
         retry_delay = 5
         
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Запрос районов для города {self.city} (попытка {attempt + 1}/{max_retries})")
-                
-                response = requests.post(
-                    self.OVERPASS_API,
-                    data={'data': overpass_query},
-                    headers=self.headers,
-                    timeout=60
-                )
-                
-                if response.status_code == 504:
-                    logger.warning(f"Timeout от Overpass API, повтор через {retry_delay} сек...")
+        # Try each Overpass API endpoint
+        for api_endpoint in self.OVERPASS_APIS:
+            logger.info(f"Пробуем endpoint: {api_endpoint}")
+            
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Запрос районов для города {self.city} (попытка {attempt + 1}/{max_retries})")
+                    
+                    # Configure session with better SSL handling
+                    session = requests.Session()
+                    session.headers.update(self.headers)
+                    
+                    # Try with different SSL configurations
+                    try:
+                        response = session.post(
+                            api_endpoint,
+                            data={'data': overpass_query},
+                            timeout=60,
+                            verify=True
+                        )
+                    except requests.exceptions.SSLError:
+                        logger.warning(f"SSL ошибка с {api_endpoint}, пробуем без проверки SSL")
+                        response = session.post(
+                            api_endpoint,
+                            data={'data': overpass_query},
+                            timeout=60,
+                            verify=False
+                        )
+                    
+                    if response.status_code == 504:
+                        logger.warning(f"Timeout от Overpass API, повтор через {retry_delay} сек...")
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            logger.error(f"Превышено количество попыток для {api_endpoint}")
+                            break
+                    
+                    if response.status_code != 200:
+                        logger.error(f"Ошибка Overpass API: {response.status_code} от {api_endpoint}")
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            break
+                    
+                    data = response.json()
+                    districts = []
+                    
+                    for element in data.get('elements', []):
+                        if element.get('type') == 'relation':
+                            district = self._parse_district(element)
+                            if district:
+                                districts.append(district)
+                    
+                    logger.info(f"Найдено районов: {len(districts)}")
+                    return districts
+                    
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Timeout при запросе к {api_endpoint}, повтор через {retry_delay} сек...")
                     if attempt < max_retries - 1:
                         import time
                         time.sleep(retry_delay)
                         continue
                     else:
-                        logger.error("Превышено количество попыток")
-                        return []
-                
-                if response.status_code != 200:
-                    logger.error(f"Ошибка Overpass API: {response.status_code}")
-                    return []
-                
-                data = response.json()
-                districts = []
-                
-                for element in data.get('elements', []):
-                    if element.get('type') == 'relation':
-                        district = self._parse_district(element)
-                        if district:
-                            districts.append(district)
-                
-                logger.info(f"Найдено районов: {len(districts)}")
-                return districts
-                
-            except requests.exceptions.Timeout:
-                logger.warning(f"Timeout при запросе, повтор через {retry_delay} сек...")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    logger.error("Превышено количество попыток")
-                    return []
-            except Exception as e:
-                logger.error(f"Ошибка при получении районов: {e}", exc_info=True)
-                return []
+                        logger.error(f"Превышено количество попыток для {api_endpoint}")
+                        break
+                except requests.exceptions.SSLError as e:
+                    logger.error(f"SSL ошибка при запросе к {api_endpoint}: {e}")
+                    break
+                except Exception as e:
+                    logger.error(f"Ошибка при получении районов из {api_endpoint}: {e}", exc_info=True)
+                    break
         
+        logger.error(f"Не удалось получить районы для города {self.city} после всех попыток")
         return []
     
     def _parse_district(self, element: Dict) -> Optional[Dict]:
@@ -163,28 +195,101 @@ class OSMDistrictsImporter:
             if not outer_ways:
                 return None
             
-            # Собираем координаты из всех outer ways
-            coordinates = []
+            # Собираем все сегменты координат
+            segments = []
             for way in outer_ways:
                 way_coords = []
                 for node in way.get('geometry', []):
                     way_coords.append([node['lon'], node['lat']])
                 
                 if way_coords:
-                    coordinates.append(way_coords)
+                    segments.append(way_coords)
             
-            if not coordinates:
+            if not segments:
                 return None
             
+            # Соединяем сегменты в единый замкнутый полигон
+            connected_coords = self._connect_way_segments(segments)
+            
+            if not connected_coords or len(connected_coords) < 3:
+                return None
+            
+            # Убеждаемся, что полигон замкнут
+            if connected_coords[0] != connected_coords[-1]:
+                connected_coords.append(connected_coords[0])
+            
             # Формируем GeoJSON Polygon
+            # В GeoJSON Polygon coordinates - это массив колец (первое - внешнее, остальные - дырки)
             return {
                 'type': 'Polygon',
-                'coordinates': coordinates
+                'coordinates': [connected_coords]
             }
             
         except Exception as e:
             logger.error(f"Ошибка извлечения геометрии: {e}")
             return None
+    
+    def _connect_way_segments(self, segments: List[List]) -> List:
+        """
+        Соединяет сегменты ways в единую линию
+        
+        Args:
+            segments: Список сегментов координат
+            
+        Returns:
+            Единый список координат
+        """
+        if not segments:
+            return []
+        
+        if len(segments) == 1:
+            return segments[0]
+        
+        # Начинаем с первого сегмента
+        result = segments[0][:]
+        remaining = segments[1:]
+        
+        # Пытаемся присоединить оставшиеся сегменты
+        max_iterations = len(remaining) * 2  # Защита от бесконечного цикла
+        iterations = 0
+        
+        while remaining and iterations < max_iterations:
+            iterations += 1
+            found = False
+            
+            for i, segment in enumerate(remaining):
+                # Проверяем, можно ли присоединить сегмент к концу
+                if result[-1] == segment[0]:
+                    result.extend(segment[1:])
+                    remaining.pop(i)
+                    found = True
+                    break
+                # Проверяем, можно ли присоединить перевернутый сегмент к концу
+                elif result[-1] == segment[-1]:
+                    result.extend(reversed(segment[:-1]))
+                    remaining.pop(i)
+                    found = True
+                    break
+                # Проверяем, можно ли присоединить сегмент к началу
+                elif result[0] == segment[-1]:
+                    result = segment[:-1] + result
+                    remaining.pop(i)
+                    found = True
+                    break
+                # Проверяем, можно ли присоединить перевернутый сегмент к началу
+                elif result[0] == segment[0]:
+                    result = list(reversed(segment[1:])) + result
+                    remaining.pop(i)
+                    found = True
+                    break
+            
+            if not found:
+                # Если не нашли подходящий сегмент, добавляем первый оставшийся
+                # (это может быть отдельный остров или дырка в полигоне)
+                logger.warning(f"Не удалось присоединить сегмент, пропускаем {len(remaining)} сегментов")
+                break
+        
+        return result
     
     def _parse_population(self, pop_str: Optional[str]) -> Optional[int]:
         """

@@ -8,6 +8,12 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
+    <!-- Flatpickr CSS for calendar -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,89 +21,180 @@
     <div class="container">
         <!-- Боковая панель -->
         <div class="sidebar">
-            <h1>🎭 События города</h1>
-            
-            <div class="panel">
-                <h3>Фильтр по типу</h3>
-                <select id="eventTypeFilter">
-                    <option value="">Все события</option>
-                    <option value="concert">🎵 Концерты</option>
-                    <option value="theater">🎭 Театр</option>
-                    <option value="exhibition">🖼️ Выставки</option>
-                    <option value="sport">⚽ Спорт</option>
-                    <option value="festival">🎪 Фестивали</option>
-                    <option value="repair">🚧 Ремонты</option>
-                    <option value="accident">🚗 ДТП</option>
-                    <option value="city_event">🏛️ Городские</option>
-                </select>
-                <button onclick="filterEvents()">Применить</button>
+            <div class="sidebar-header">
+                <h1><i class="fas fa-map-marked-alt"></i> События города</h1>
+                <p class="subtitle">Интерактивная карта мероприятий</p>
             </div>
             
+            <!-- Фильтр по дате с календарем -->
             <div class="panel">
-                <h3>Фильтр по дате</h3>
-                <select id="dateFilter">
-                    <option value="all">Все события</option>
-                    <option value="today">Сегодня</option>
-                    <option value="tomorrow">Завтра</option>
-                    <option value="week">На неделю</option>
-                    <option value="month">На месяц</option>
-                </select>
-                <button onclick="filterByDate()">Применить</button>
+                <h3><i class="fas fa-calendar-alt"></i> Фильтр по дате</h3>
+                <div class="date-filter-container">
+                    <input type="text" id="dateRangePicker" placeholder="Выберите диапазон дат" readonly>
+                    <button id="clearDateFilter" class="clear-btn" title="Очистить фильтр">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="quick-dates">
+                    <button class="quick-date-btn" data-filter="today">Сегодня</button>
+                    <button class="quick-date-btn" data-filter="tomorrow">Завтра</button>
+                    <button class="quick-date-btn" data-filter="week">Неделя</button>
+                    <button class="quick-date-btn" data-filter="month">Месяц</button>
+                </div>
             </div>
             
+            <!-- Фильтр по типу с множественным выбором -->
             <div class="panel">
-                <h3>Фильтр по источнику</h3>
-                <select id="sourceFilter">
-                    <option value="">Все источники</option>
-                    <option value="yandex_afisha">Яндекс.Афиша</option>
-                    <option value="manual">Ручной ввод</option>
-                    <option value="telegram">Telegram</option>
-                </select>
-                <button onclick="filterEvents()">Применить</button>
+                <h3><i class="fas fa-filter"></i> Фильтр по типу</h3>
+                <div class="multiselect-container">
+                    <div class="multiselect-header" id="typeFilterHeader">
+                        <span class="selected-text">Все события</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="multiselect-dropdown" id="typeFilterDropdown">
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="concert" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🎵 Концерты</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="theater" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🎭 Театр</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="exhibition" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🖼️ Выставки</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="sport" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">⚽ Спорт</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="festival" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🎪 Фестивали</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="repair" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🚧 Ремонты</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="accident" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🚗 ДТП</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="city_event" class="event-type-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">🏛️ Городские</span>
+                        </label>
+                    </div>
+                </div>
             </div>
             
+            <!-- Фильтр по источнику -->
             <div class="panel">
-                <h3>Выбор города</h3>
-                <select id="citySelect">
+                <h3><i class="fas fa-database"></i> Источник данных</h3>
+                <div class="multiselect-container">
+                    <div class="multiselect-header" id="sourceFilterHeader">
+                        <span class="selected-text">Все источники</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="multiselect-dropdown" id="sourceFilterDropdown">
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="yandex_afisha" class="source-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">📰 Яндекс.Афиша</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="manual" class="source-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">✍️ Ручной ввод</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="telegram" class="source-checkbox">
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-text">📱 Telegram</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Выбор города -->
+            <div class="panel">
+                <h3><i class="fas fa-city"></i> Выбор города</h3>
+                <select id="citySelect" class="styled-select">
                     <option value="">Загрузка...</option>
                 </select>
-                <button onclick="changeCity()">Перейти</button>
             </div>
             
-            <div class="panel">
-                <h3>Стиль карты</h3>
-                <select id="mapStyle">
-                    <option value="osm">OpenStreetMap</option>
-                    <option value="dark">Dark Matter</option>
-                    <option value="light">Positron</option>
-                    <option value="satellite">Спутник</option>
-                    <option value="toner">Toner (ч/б)</option>
-                    <option value="terrain">Terrain</option>
-                </select>
-            </div>
             
+            <!-- Импорт данных -->
             <div class="panel">
-                <h3>Слои карты</h3>
-                <label><input type="checkbox" id="showEvents" checked> События</label><br>
-                <label><input type="checkbox" id="showDistricts" checked> Районы</label>
-            </div>
-            
-            <div class="panel">
-                <h3>Импорт данных</h3>
+                <h3><i class="fas fa-download"></i> Импорт данных</h3>
                 <button onclick="importFromAfisha()" class="import-btn">
-                    📥 Импорт событий (Яндекс.Афиша)
+                    <i class="fas fa-cloud-download-alt"></i> Импорт событий
                 </button>
             </div>
             
+            <!-- Результаты -->
             <div id="results" class="results"></div>
         </div>
         
         <!-- Карта -->
-        <div id="map"></div>
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="map-overlay">
+                <div class="stats-badge" id="eventCount">
+                    <i class="fas fa-calendar-check"></i>
+                    <span>0 событий</span>
+                </div>
+            </div>
+            <!-- Выбор стиля карты -->
+            <div class="map-style-selector">
+                <button class="map-style-btn" id="mapStyleToggle" title="Сменить стиль карты">
+                    <i class="fas fa-layer-group"></i>
+                </button>
+                <div class="map-style-dropdown" id="mapStyleDropdown">
+                    <button class="style-option" data-style="osm">
+                        <i class="fas fa-map"></i>
+                        <span>OpenStreetMap</span>
+                    </button>
+                    <button class="style-option" data-style="dark">
+                        <i class="fas fa-moon"></i>
+                        <span>Dark Matter</span>
+                    </button>
+                    <button class="style-option" data-style="light">
+                        <i class="fas fa-sun"></i>
+                        <span>Positron</span>
+                    </button>
+                    <button class="style-option" data-style="satellite">
+                        <i class="fas fa-satellite"></i>
+                        <span>Спутник</span>
+                    </button>
+                    <button class="style-option" data-style="toner">
+                        <i class="fas fa-adjust"></i>
+                        <span>Toner (ч/б)</span>
+                    </button>
+                    <button class="style-option" data-style="terrain">
+                        <i class="fas fa-mountain"></i>
+                        <span>Terrain</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
     
     <!-- Custom JS -->
     <script src="js/api.js"></script>

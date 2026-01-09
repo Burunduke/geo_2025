@@ -14,16 +14,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application...")
     
-    # Initialize districts from OSM if needed
+    # Initialize districts from OSM if needed - now blocking startup
     try:
         from .init_districts import init_districts_from_osm
-        import threading
-        # Run in background thread to not block startup
-        thread = threading.Thread(target=init_districts_from_osm, daemon=True)
-        thread.start()
-        logger.info("Districts initialization started in background")
+        logger.info("Starting districts initialization (blocking)...")
+        init_districts_from_osm()
+        logger.info("Districts initialization completed")
     except Exception as e:
-        logger.error(f"Failed to start districts initialization: {e}")
+        logger.error(f"Failed to initialize districts: {e}")
     
     try:
         await start_bot()
@@ -71,7 +69,53 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    """Check application health including districts status"""
+    try:
+        from .database import SessionLocal
+        from .models import District
+        from sqlalchemy import func
+        import os
+        
+        # Check if initialization flag file exists
+        init_flag_path = '/app/data/districts_initialized'
+        districts_initialized = os.path.exists(init_flag_path)
+        
+        db = SessionLocal()
+        try:
+            # Check districts count
+            total_districts = db.query(District).count()
+            valid_districts = db.query(District).filter(
+                func.ST_IsValid(District.geom)
+            ).count()
+            
+            # Only mark as ready if both conditions are met:
+            # 1. Initialization process completed (flag file exists)
+            # 2. We have valid districts in database
+            districts_ready = districts_initialized and total_districts > 0 and valid_districts > 0
+            
+            return {
+                "status": "healthy",
+                "districts": {
+                    "total": total_districts,
+                    "valid": valid_districts,
+                    "ready": districts_ready,
+                    "initialized": districts_initialized
+                }
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "districts": {
+                "total": 0,
+                "valid": 0,
+                "ready": False,
+                "initialized": False
+            }
+        }
 
 @app.get("/api/cities")
 def get_cities():

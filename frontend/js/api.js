@@ -125,6 +125,12 @@ class CityGeoAPI {
     async getCities() {
         return this.request('/cities');
     }
+
+    // Проверка состояния районов
+    
+    async checkDistrictsHealth() {
+        return this.request('/districts/health');
+    }
 }
 
 const api = new CityGeoAPI();
