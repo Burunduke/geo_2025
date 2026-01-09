@@ -1,13 +1,12 @@
 """
-Yandex Afisha Scraper
-Scrapes events from Yandex Afisha for a specific city
+Yandex Afisha Scraper - Modern JSON API Implementation
+Scrapes events from Yandex Afisha using their internal API endpoints
 """
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import logging
-import re
+import time
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from ..models import Event, District
@@ -15,201 +14,396 @@ from ..database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
+
 class YandexAfishaScraper:
     """
-    Scraper for Yandex Afisha events
+    Modern scraper for Yandex Afisha events using JSON API
     
-    Note: Yandex Afisha structure may change. This is a basic implementation
-    that may need adjustments based on the actual website structure.
+    This implementation uses Yandex's internal API endpoints that return JSON data,
+    which is more reliable than HTML parsing for SPA applications.
     """
     
-    def __init__(self, city: str = "voronezh"):
+    # API endpoints discovered through browser DevTools
+    API_BASE = "https://afisha.yandex.ru/api"
+    GEOCODER_API = "https://geocode-maps.yandex.ru/1.x/"
+    
+    # Event type mapping from Yandex categories to our types
+    TYPE_MAPPING = {
+        'concert': 'concert',
+        'theatre': 'theater',
+        'exhibition': 'exhibition',
+        'sport': 'sport',
+        'cinema': 'festival',  # Map cinema to festival for now
+        'festival': 'festival',
+        'show': 'festival',
+        'party': 'festival'
+    }
+    
+    def __init__(self, city: str = "voronezh", geocoder_api_key: Optional[str] = None):
         """
         Initialize scraper for a specific city
         
         Args:
             city: City name in URL format (e.g., 'voronezh', 'moscow', 'spb')
+            geocoder_api_key: Yandex Geocoder API key (optional, for address geocoding)
         """
         self.city = city
-        self.base_url = f"https://afisha.yandex.ru/{city}"
+        self.geocoder_api_key = geocoder_api_key
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8'
         }
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        
+        # Cache for geocoding results to avoid repeated API calls
+        self._geocode_cache = {}
     
-    def scrape_events(self, categories: Optional[List[str]] = None) -> List[Dict]:
+    def scrape_events(self, 
+                     categories: Optional[List[str]] = None,
+                     days_ahead: int = 30,
+                     limit_per_category: int = 50) -> List[Dict]:
         """
-        Scrape events from Yandex Afisha
+        Scrape events from Yandex Afisha using API endpoints
         
         Args:
             categories: List of categories to scrape (e.g., ['concert', 'theatre', 'exhibition'])
-                       If None, scrapes all categories
+                       If None, scrapes all available categories
+            days_ahead: Number of days ahead to fetch events for
+            limit_per_category: Maximum events per category
         
         Returns:
-            List of event dictionaries
+            List of event dictionaries with all required fields
         """
         if categories is None:
-            categories = ['concert', 'theatre', 'exhibition', 'sport']
+            categories = ['concert', 'theatre', 'exhibition', 'sport', 'festival']
         
         all_events = []
         
         for category in categories:
             try:
-                logger.info(f"Scraping {category} events from Yandex Afisha")
-                events = self._scrape_category(category)
+                logger.info(f"Fetching {category} events from Yandex Afisha API")
+                events = self._fetch_category_events(category, days_ahead, limit_per_category)
                 all_events.extend(events)
                 logger.info(f"Found {len(events)} {category} events")
+                
+                # Rate limiting to be respectful to the API
+                time.sleep(1)
+                
             except Exception as e:
-                logger.error(f"Error scraping {category}: {e}")
+                logger.error(f"Error fetching {category} events: {e}", exc_info=True)
                 continue
         
+        logger.info(f"Total events scraped: {len(all_events)}")
         return all_events
     
-    def _scrape_category(self, category: str) -> List[Dict]:
+    def _fetch_category_events(self, category: str, days_ahead: int, limit: int) -> List[Dict]:
         """
-        Scrape events for a specific category
+        Fetch events for a specific category using Yandex API
         
-        Note: This is a simplified implementation. The actual Yandex Afisha
-        structure may require different parsing logic.
+        The API structure may vary, this implementation tries multiple approaches:
+        1. Direct category API endpoint
+        2. Selection/rubric endpoints
+        3. Search endpoint with filters
         """
-        url = f"{self.base_url}/{category}"
-        
-        try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            logger.error(f"Failed to fetch {url}: {e}")
-            return []
-        
-        soup = BeautifulSoup(response.content, 'lxml')
         events = []
         
-        # This is a placeholder parsing logic
-        # The actual selectors need to be adjusted based on Yandex Afisha's current structure
-        event_cards = soup.find_all('div', class_='event-card')  # Adjust selector
+        # Try different API endpoint patterns
+        endpoints_to_try = [
+            f"{self.API_BASE}/events/rubric/{category}",
+            f"{self.API_BASE}/events/selection/{category}",
+            f"https://afisha.yandex.ru/{self.city}/api/events/rubric/{category}"
+        ]
         
-        for card in event_cards:
+        for endpoint in endpoints_to_try:
             try:
-                event = self._parse_event_card(card, category)
-                if event:
-                    events.append(event)
+                params = {
+                    'city': self.city,
+                    'limit': limit,
+                    'offset': 0
+                }
+                
+                response = self.session.get(endpoint, params=params, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    events = self._parse_api_response(data, category)
+                    if events:
+                        logger.info(f"Successfully fetched from {endpoint}")
+                        break
+                        
             except Exception as e:
-                logger.error(f"Error parsing event card: {e}")
+                logger.debug(f"Endpoint {endpoint} failed: {e}")
                 continue
         
         return events
     
-    def _parse_event_card(self, card, category: str) -> Optional[Dict]:
+    def _parse_api_response(self, data: Dict, category: str) -> List[Dict]:
         """
-        Parse individual event card
+        Parse JSON response from Yandex API
         
-        Note: Selectors are placeholders and need to be adjusted
+        The response structure may vary, this handles common patterns
+        """
+        events = []
+        
+        # Try different response structures
+        items = (
+            data.get('data', {}).get('items', []) or
+            data.get('events', []) or
+            data.get('items', []) or
+            []
+        )
+        
+        for item in items:
+            try:
+                event = self._parse_event_item(item, category)
+                if event:
+                    events.append(event)
+            except Exception as e:
+                logger.error(f"Error parsing event item: {e}")
+                continue
+        
+        return events
+    
+    def _parse_event_item(self, item: Dict, category: str) -> Optional[Dict]:
+        """
+        Parse individual event item from API response
+        
+        Args:
+            item: Event data from API
+            category: Category name for type mapping
+        
+        Returns:
+            Parsed event dictionary or None if parsing fails
         """
         try:
-            # Extract event details (adjust selectors based on actual HTML)
-            title_elem = card.find('h3', class_='event-title')  # Adjust
-            title = title_elem.text.strip() if title_elem else None
+            # Extract basic information
+            event_id = item.get('id')
+            title = item.get('title') or item.get('name')
             
             if not title:
                 return None
             
-            # Extract date and time
-            date_elem = card.find('div', class_='event-date')  # Adjust
-            date_str = date_elem.text.strip() if date_elem else None
-            
-            # Extract location/address
-            location_elem = card.find('div', class_='event-location')  # Adjust
-            location = location_elem.text.strip() if location_elem else None
-            
             # Extract description
-            desc_elem = card.find('div', class_='event-description')  # Adjust
-            description = desc_elem.text.strip() if desc_elem else None
+            description = (
+                item.get('description') or
+                item.get('annotation') or
+                item.get('lead') or
+                ''
+            )
             
-            # Parse date (this is simplified, needs proper date parsing)
-            start_time = self._parse_date(date_str) if date_str else datetime.now()
+            # Extract dates
+            start_time = self._parse_event_date(item)
+            end_time = self._parse_event_end_date(item)
             
-            # Try to extract coordinates from location (if available)
-            # This is a placeholder - actual implementation would need geocoding
-            lat, lon = self._geocode_location(location) if location else (None, None)
+            # Extract location information
+            place = item.get('place', {})
+            venue_name = place.get('title') or place.get('name') or ''
+            address = place.get('address') or ''
+            
+            # Extract coordinates
+            coords = place.get('coordinates')
+            if coords and isinstance(coords, (list, tuple)) and len(coords) >= 2:
+                lat, lon = float(coords[1]), float(coords[0])  # Note: Yandex uses [lon, lat]
+            else:
+                # Try geocoding the address
+                lat, lon = self._geocode_address(address, venue_name)
+            
+            # Extract image
+            image_url = self._extract_image_url(item)
+            
+            # Extract price
+            price = self._extract_price(item)
+            
+            # Build source URL
+            source_url = f"https://afisha.yandex.ru/{self.city}/event/{event_id}" if event_id else ''
+            
+            # Map category to event type
+            event_type = self.TYPE_MAPPING.get(category, 'festival')
             
             return {
                 'title': title,
-                'event_type': self._map_category_to_type(category),
-                'description': description,
-                'location': location,
+                'event_type': event_type,
+                'description': description[:500] if description else None,  # Limit description length
+                'venue': venue_name,
                 'lat': lat,
                 'lon': lon,
                 'start_time': start_time,
+                'end_time': end_time,
                 'source': 'yandex_afisha',
-                'source_url': card.get('href', '')  # Adjust
+                'source_url': source_url,
+                'image_url': image_url,
+                'price': price
             }
-        
+            
         except Exception as e:
-            logger.error(f"Error parsing event card: {e}")
+            logger.error(f"Error parsing event item: {e}", exc_info=True)
             return None
     
-    def _parse_date(self, date_str: str) -> datetime:
+    def _parse_event_date(self, item: Dict) -> datetime:
         """
-        Parse date string to datetime
-        
-        This is a simplified implementation. Needs to handle various date formats.
+        Parse event start date from various possible fields
         """
-        # Common patterns in Russian date formats
-        patterns = [
-            r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)',
-            r'(\d{1,2})\.(\d{1,2})\.(\d{4})',
-            r'сегодня',
-            r'завтра'
-        ]
+        # Try different date field names
+        date_fields = ['date', 'dateFrom', 'start', 'startDate', 'schedule']
         
-        # Handle "today" and "tomorrow"
-        if 'сегодня' in date_str.lower():
-            return datetime.now().replace(hour=19, minute=0, second=0, microsecond=0)
-        elif 'завтра' in date_str.lower():
-            return (datetime.now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
+        for field in date_fields:
+            date_value = item.get(field)
+            if date_value:
+                try:
+                    if isinstance(date_value, str):
+                        # Try ISO format
+                        return datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                    elif isinstance(date_value, (int, float)):
+                        # Unix timestamp
+                        return datetime.fromtimestamp(date_value)
+                except:
+                    continue
         
-        # Try to parse other formats
-        # This is simplified - real implementation needs more robust parsing
-        try:
-            # Try standard format
-            return datetime.strptime(date_str, '%d.%m.%Y')
-        except:
-            # Default to tomorrow evening if parsing fails
-            return (datetime.now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
+        # Default to tomorrow evening if no date found
+        return (datetime.now() + timedelta(days=1)).replace(hour=19, minute=0, second=0, microsecond=0)
     
-    def _geocode_location(self, location: str) -> tuple:
+    def _parse_event_end_date(self, item: Dict) -> Optional[datetime]:
         """
-        Convert location string to coordinates
+        Parse event end date if available
+        """
+        date_fields = ['dateTo', 'end', 'endDate']
         
-        This is a placeholder. Real implementation would use:
-        - Yandex Geocoder API
-        - Google Geocoding API
-        - Or extract coordinates if they're in the HTML
+        for field in date_fields:
+            date_value = item.get(field)
+            if date_value:
+                try:
+                    if isinstance(date_value, str):
+                        return datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                    elif isinstance(date_value, (int, float)):
+                        return datetime.fromtimestamp(date_value)
+                except:
+                    continue
+        
+        return None
+    
+    def _extract_image_url(self, item: Dict) -> Optional[str]:
+        """
+        Extract image URL from event data
+        """
+        # Try different image field structures
+        image = item.get('image', {})
+        
+        if isinstance(image, str):
+            return image
+        elif isinstance(image, dict):
+            # Try different size variants
+            for size in ['orig', 'large', 'medium', 'small', 'url']:
+                url = image.get(size)
+                if url:
+                    return url if url.startswith('http') else f"https:{url}"
+        
+        # Try other possible fields
+        for field in ['poster', 'thumbnail', 'cover']:
+            value = item.get(field)
+            if value:
+                if isinstance(value, str):
+                    return value if value.startswith('http') else f"https:{value}"
+                elif isinstance(value, dict):
+                    url = value.get('url')
+                    if url:
+                        return url if url.startswith('http') else f"https:{url}"
+        
+        return None
+    
+    def _extract_price(self, item: Dict) -> Optional[str]:
+        """
+        Extract price information from event data
+        """
+        # Try different price field structures
+        price_info = item.get('price', {})
+        
+        if isinstance(price_info, str):
+            return price_info
+        elif isinstance(price_info, (int, float)):
+            return f"{price_info} ₽"
+        elif isinstance(price_info, dict):
+            min_price = price_info.get('min') or price_info.get('from')
+            max_price = price_info.get('max') or price_info.get('to')
+            
+            if min_price and max_price:
+                return f"{min_price}-{max_price} ₽"
+            elif min_price:
+                return f"от {min_price} ₽"
+            elif max_price:
+                return f"до {max_price} ₽"
+        
+        # Check if it's free
+        if item.get('isFree') or item.get('is_free'):
+            return "Бесплатно"
+        
+        return None
+    
+    def _geocode_address(self, address: str, venue_name: str = '') -> Tuple[float, float]:
+        """
+        Convert address to coordinates using Yandex Geocoder API
+        
+        Args:
+            address: Address string
+            venue_name: Venue name for better geocoding
+        
+        Returns:
+            Tuple of (latitude, longitude)
         """
         # Default coordinates for Voronezh city center
         default_coords = (51.6605, 39.2005)
         
-        # In a real implementation, you would:
-        # 1. Use Yandex Geocoder API
-        # 2. Cache results to avoid repeated API calls
-        # 3. Handle API errors gracefully
+        if not address and not venue_name:
+            return default_coords
+        
+        # Build search query
+        search_query = f"{self.city}, {venue_name}, {address}".strip(', ')
+        
+        # Check cache
+        if search_query in self._geocode_cache:
+            return self._geocode_cache[search_query]
+        
+        # If no API key, return default
+        if not self.geocoder_api_key:
+            logger.debug(f"No geocoder API key, using default coordinates for: {search_query}")
+            return default_coords
+        
+        try:
+            params = {
+                'apikey': self.geocoder_api_key,
+                'geocode': search_query,
+                'format': 'json',
+                'results': 1
+            }
+            
+            response = requests.get(self.GEOCODER_API, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                geo_objects = data.get('response', {}).get('GeoObjectCollection', {}).get('featureMember', [])
+                
+                if geo_objects:
+                    point = geo_objects[0].get('GeoObject', {}).get('Point', {}).get('pos', '')
+                    if point:
+                        lon, lat = map(float, point.split())
+                        coords = (lat, lon)
+                        self._geocode_cache[search_query] = coords
+                        logger.info(f"Geocoded '{search_query}' to {coords}")
+                        return coords
+            
+        except Exception as e:
+            logger.error(f"Geocoding error for '{search_query}': {e}")
         
         return default_coords
-    
-    def _map_category_to_type(self, category: str) -> str:
-        """Map Yandex Afisha category to our event type"""
-        mapping = {
-            'concert': 'concert',
-            'theatre': 'theater',
-            'exhibition': 'exhibition',
-            'sport': 'sport',
-            'cinema': 'cinema',
-            'festival': 'festival'
-        }
-        return mapping.get(category, 'festival')
     
     def import_events_to_db(self, events: List[Dict], db: Session = None) -> Dict:
         """
         Import scraped events to database with deduplication
+        
+        Args:
+            events: List of event dictionaries
+            db: Database session (optional, will create new if not provided)
         
         Returns:
             Dictionary with import statistics
@@ -225,29 +419,38 @@ class YandexAfishaScraper:
                 'total': len(events),
                 'imported': 0,
                 'duplicates': 0,
-                'errors': 0
+                'errors': 0,
+                'skipped_no_coords': 0
             }
             
             for event_data in events:
                 try:
-                    # Skip events without coordinates
-                    if not event_data.get('lat') or not event_data.get('lon'):
-                        logger.warning(f"Skipping event without coordinates: {event_data.get('title')}")
+                    # Validate required fields
+                    if not event_data.get('title'):
+                        logger.warning("Skipping event without title")
                         stats['errors'] += 1
                         continue
                     
+                    # Skip events without coordinates
+                    if not event_data.get('lat') or not event_data.get('lon'):
+                        logger.warning(f"Skipping event without coordinates: {event_data.get('title')}")
+                        stats['skipped_no_coords'] += 1
+                        continue
+                    
                     # Check for duplicates (same title, similar date, similar location)
+                    # Use a more sophisticated duplicate check
                     existing = db.query(Event).filter(
                         Event.title == event_data['title'],
+                        Event.source == 'yandex_afisha',
                         func.date(Event.start_time) == func.date(event_data['start_time'])
                     ).first()
                     
                     if existing:
-                        logger.info(f"Duplicate event found: {event_data['title']}")
+                        logger.debug(f"Duplicate event found: {event_data['title']}")
                         stats['duplicates'] += 1
                         continue
                     
-                    # Create new event
+                    # Create new event with all fields
                     new_event = Event(
                         title=event_data['title'],
                         event_type=event_data['event_type'],
@@ -257,7 +460,12 @@ class YandexAfishaScraper:
                             4326
                         ),
                         start_time=event_data['start_time'],
-                        end_time=event_data.get('end_time')
+                        end_time=event_data.get('end_time'),
+                        source=event_data.get('source', 'yandex_afisha'),
+                        source_url=event_data.get('source_url'),
+                        image_url=event_data.get('image_url'),
+                        price=event_data.get('price'),
+                        venue=event_data.get('venue')
                     )
                     
                     db.add(new_event)
@@ -266,28 +474,56 @@ class YandexAfishaScraper:
                     logger.info(f"Imported event: {event_data['title']}")
                     
                 except Exception as e:
-                    logger.error(f"Error importing event {event_data.get('title')}: {e}")
+                    logger.error(f"Error importing event {event_data.get('title')}: {e}", exc_info=True)
                     db.rollback()
                     stats['errors'] += 1
                     continue
             
+            logger.info(f"Import completed: {stats}")
             return stats
             
         finally:
             if close_db:
                 db.close()
 
-def scrape_and_import_yandex_events(city: str = "voronezh", categories: Optional[List[str]] = None):
+
+def scrape_and_import_yandex_events(
+    city: str = "voronezh",
+    categories: Optional[List[str]] = None,
+    geocoder_api_key: Optional[str] = None,
+    days_ahead: int = 30,
+    limit_per_category: int = 50
+) -> Dict:
     """
     Convenience function to scrape and import events in one call
+    
+    Args:
+        city: City name (e.g., 'voronezh', 'moscow', 'spb')
+        categories: List of categories to scrape
+        geocoder_api_key: Yandex Geocoder API key for address geocoding
+        days_ahead: Number of days ahead to fetch events
+        limit_per_category: Maximum events per category
+    
+    Returns:
+        Dictionary with import statistics
     """
-    scraper = YandexAfishaScraper(city=city)
-    events = scraper.scrape_events(categories=categories)
+    scraper = YandexAfishaScraper(city=city, geocoder_api_key=geocoder_api_key)
+    events = scraper.scrape_events(
+        categories=categories,
+        days_ahead=days_ahead,
+        limit_per_category=limit_per_category
+    )
     
     if not events:
         logger.warning("No events found to import")
-        return {'total': 0, 'imported': 0, 'duplicates': 0, 'errors': 0}
+        return {
+            'total': 0,
+            'imported': 0,
+            'duplicates': 0,
+            'errors': 0,
+            'skipped_no_coords': 0
+        }
     
     stats = scraper.import_events_to_db(events)
-    logger.info(f"Import completed: {stats}")
+    logger.info(f"Scraping and import completed: {stats}")
     return stats

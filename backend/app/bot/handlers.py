@@ -65,17 +65,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📚 *Доступные команды:*\n\n"
         "/start - Начать работу с ботом\n"
+        "/events - События сегодня\n"
+        "/tomorrow - События завтра\n"
+        "/week - События на неделю\n"
         "/districts - Показать все районы города\n"
         "/subscribe - Подписаться на уведомления о районе\n"
         "/unsubscribe - Отписаться от уведомлений\n"
         "/myareas - Показать мои подписки\n"
-        "/today - События сегодня в моих районах\n"
         "/help - Показать эту справку\n\n"
         "💡 *Как это работает:*\n"
         "1. Выберите районы, которые вас интересуют\n"
         "2. Подпишитесь на них командой /subscribe\n"
         "3. Каждое утро в 9:00 вы будете получать уведомления о событиях дня\n"
-        "4. Используйте /today чтобы проверить события прямо сейчас"
+        "4. Используйте /events чтобы проверить события прямо сейчас"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -293,8 +295,8 @@ async def myareas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-async def today_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /today command - show today's events in subscribed districts"""
+async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /events command - show today's events in subscribed districts"""
     user = update.effective_user
     
     db = SessionLocal()
@@ -352,19 +354,210 @@ async def today_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"🏘 *{district_name}*\n"
             for event in events:
                 event_emoji = {
-                    'accident': '🚨',
+                    'concert': '🎵',
+                    'theater': '🎭',
+                    'exhibition': '🖼️',
+                    'sport': '⚽',
+                    'festival': '🎪',
                     'repair': '🚧',
-                    'festival': '🎉'
+                    'accident': '🚗',
+                    'city_event': '🏛️'
                 }.get(event.event_type, '📍')
                 
-                text += f"{event_emoji} *{event.title}*\n"
-                text += f"   Тип: {event.event_type}\n"
-                text += f"   Время: {event.start_time.strftime('%H:%M')}"
+                text += f"\n{event_emoji} *{event.title}*\n"
+                if event.venue:
+                    text += f"   📍 {event.venue}\n"
+                text += f"   🕐 {event.start_time.strftime('%H:%M')}"
                 if event.end_time:
                     text += f" - {event.end_time.strftime('%H:%M')}"
                 text += "\n"
+                if event.price:
+                    text += f"   💰 {event.price}\n"
                 if event.description:
-                    text += f"   {event.description}\n"
+                    desc = event.description[:100]
+                    if len(event.description) > 100:
+                        desc += "..."
+                    text += f"   {desc}\n"
+                if event.source_url:
+                    text += f"   🔗 [Подробнее]({event.source_url})\n"
+                text += "\n"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+    finally:
+        db.close()
+
+async def tomorrow_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /tomorrow command - show tomorrow's events"""
+    user = update.effective_user
+    
+    db = SessionLocal()
+    try:
+        db_user = db.query(TelegramUser).filter(
+            TelegramUser.telegram_id == user.id
+        ).first()
+        
+        if not db_user:
+            await update.message.reply_text(
+                "❌ Пользователь не найден. Используйте /start"
+            )
+            return
+        
+        # Get user's subscribed districts
+        subscriptions = db.query(UserSubscription).filter(
+            UserSubscription.user_id == db_user.id,
+            UserSubscription.is_active == True
+        ).all()
+        
+        if not subscriptions:
+            await update.message.reply_text(
+                "📭 У вас нет активных подписок.\n"
+                "Используйте /subscribe для подписки на районы"
+            )
+            return
+        
+        # Get tomorrow's events
+        from datetime import date, timedelta
+        tomorrow = date.today() + timedelta(days=1)
+        
+        events_by_district = {}
+        
+        for sub in subscriptions:
+            district = db.query(District).filter(District.id == sub.district_id).first()
+            
+            events = db.query(Event).filter(
+                func.ST_Within(Event.geom, district.geom),
+                func.date(Event.start_time) == tomorrow
+            ).all()
+            
+            if events:
+                events_by_district[district.name] = events
+        
+        if not events_by_district:
+            await update.message.reply_text(
+                f"📅 На завтра ({tomorrow.strftime('%d.%m.%Y')}) нет запланированных событий в ваших районах"
+            )
+            return
+        
+        text = f"📅 *События на завтра ({tomorrow.strftime('%d.%m.%Y')}):*\n\n"
+        
+        for district_name, events in events_by_district.items():
+            text += f"🏘 *{district_name}*\n"
+            for event in events:
+                event_emoji = {
+                    'concert': '🎵',
+                    'theater': '🎭',
+                    'exhibition': '🖼️',
+                    'sport': '⚽',
+                    'festival': '🎪',
+                    'repair': '🚧',
+                    'accident': '🚗',
+                    'city_event': '🏛️'
+                }.get(event.event_type, '📍')
+                
+                text += f"\n{event_emoji} *{event.title}*\n"
+                if event.venue:
+                    text += f"   📍 {event.venue}\n"
+                text += f"   🕐 {event.start_time.strftime('%H:%M')}"
+                if event.end_time:
+                    text += f" - {event.end_time.strftime('%H:%M')}"
+                text += "\n"
+                if event.price:
+                    text += f"   💰 {event.price}\n"
+                if event.description:
+                    desc = event.description[:100]
+                    if len(event.description) > 100:
+                        desc += "..."
+                    text += f"   {desc}\n"
+                if event.source_url:
+                    text += f"   🔗 [Подробнее]({event.source_url})\n"
+                text += "\n"
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+    finally:
+        db.close()
+
+async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /week command - show this week's events"""
+    user = update.effective_user
+    
+    db = SessionLocal()
+    try:
+        db_user = db.query(TelegramUser).filter(
+            TelegramUser.telegram_id == user.id
+        ).first()
+        
+        if not db_user:
+            await update.message.reply_text(
+                "❌ Пользователь не найден. Используйте /start"
+            )
+            return
+        
+        # Get user's subscribed districts
+        subscriptions = db.query(UserSubscription).filter(
+            UserSubscription.user_id == db_user.id,
+            UserSubscription.is_active == True
+        ).all()
+        
+        if not subscriptions:
+            await update.message.reply_text(
+                "📭 У вас нет активных подписок.\n"
+                "Используйте /subscribe для подписки на районы"
+            )
+            return
+        
+        # Get this week's events
+        from datetime import date, timedelta
+        today = date.today()
+        week_end = today + timedelta(days=7)
+        
+        events_by_district = {}
+        
+        for sub in subscriptions:
+            district = db.query(District).filter(District.id == sub.district_id).first()
+            
+            events = db.query(Event).filter(
+                func.ST_Within(Event.geom, district.geom),
+                func.date(Event.start_time) >= today,
+                func.date(Event.start_time) <= week_end
+            ).order_by(Event.start_time).all()
+            
+            if events:
+                events_by_district[district.name] = events
+        
+        if not events_by_district:
+            await update.message.reply_text(
+                "📅 На ближайшую неделю нет запланированных событий в ваших районах"
+            )
+            return
+        
+        text = f"📅 *События на неделю ({today.strftime('%d.%m')} - {week_end.strftime('%d.%m.%Y')}):*\n\n"
+        
+        for district_name, events in events_by_district.items():
+            text += f"🏘 *{district_name}*\n"
+            for event in events:
+                event_emoji = {
+                    'concert': '🎵',
+                    'theater': '🎭',
+                    'exhibition': '🖼️',
+                    'sport': '⚽',
+                    'festival': '🎪',
+                    'repair': '🚧',
+                    'accident': '🚗',
+                    'city_event': '🏛️'
+                }.get(event.event_type, '📍')
+                
+                text += f"\n{event_emoji} *{event.title}*\n"
+                text += f"   📅 {event.start_time.strftime('%d.%m.%Y')}\n"
+                if event.venue:
+                    text += f"   📍 {event.venue}\n"
+                text += f"   🕐 {event.start_time.strftime('%H:%M')}"
+                if event.end_time:
+                    text += f" - {event.end_time.strftime('%H:%M')}"
+                text += "\n"
+                if event.price:
+                    text += f"   💰 {event.price}\n"
+                if event.source_url:
+                    text += f"   🔗 [Подробнее]({event.source_url})\n"
                 text += "\n"
         
         await update.message.reply_text(text, parse_mode='Markdown')

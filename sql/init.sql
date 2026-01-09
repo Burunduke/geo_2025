@@ -1,22 +1,6 @@
 -- Включаем PostGIS расширение
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Таблица с объектами инфраструктуры
-CREATE TABLE IF NOT EXISTS objects (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(50) NOT NULL,
-    address VARCHAR(255),
-    geom GEOMETRY(Point, 4326) NOT NULL,  -- WGS84
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Создание пространственного индекса (GIST)
-CREATE INDEX idx_objects_geom ON objects USING GIST(geom);
-
--- Индекс для фильтрации по типу
-CREATE INDEX idx_objects_type ON objects(type);
-
 -- Таблица с событиями
 CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
@@ -26,6 +10,11 @@ CREATE TABLE IF NOT EXISTS events (
     geom GEOMETRY(Point, 4326) NOT NULL,
     start_time TIMESTAMP NOT NULL,
     end_time TIMESTAMP,
+    source VARCHAR(50) DEFAULT 'manual',  -- yandex_afisha, manual, telegram
+    source_url VARCHAR(500),
+    image_url VARCHAR(500),
+    price VARCHAR(100),
+    venue VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -35,6 +24,7 @@ CREATE INDEX idx_events_geom ON events USING GIST(geom);
 -- Индексы для фильтрации
 CREATE INDEX idx_events_type ON events(event_type);
 CREATE INDEX idx_events_start_time ON events(start_time);
+CREATE INDEX idx_events_source ON events(source);
 
 -- Таблица с районами
 CREATE TABLE IF NOT EXISTS districts (

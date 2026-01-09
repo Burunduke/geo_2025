@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Городская инфраструктура</title>
+    <title>Карта событий города</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -15,31 +15,45 @@
     <div class="container">
         <!-- Боковая панель -->
         <div class="sidebar">
-            <h1>🗺️ Городская карта</h1>
+            <h1>🎭 События города</h1>
             
             <div class="panel">
-                <h3>Поиск в радиусе</h3>
-                <input type="number" id="radius" placeholder="Радиус (м)" value="1000">
-                <select id="objectType">
-                    <option value="">Все типы</option>
-                    <option value="hospital">Больницы</option>
-                    <option value="school">Школы</option>
-                    <option value="cafe">Кафе</option>
-                    <option value="parking">Парковки</option>
-                    <option value="pharmacy">Аптеки</option>
+                <h3>Фильтр по типу</h3>
+                <select id="eventTypeFilter">
+                    <option value="">Все события</option>
+                    <option value="concert">🎵 Концерты</option>
+                    <option value="theater">🎭 Театр</option>
+                    <option value="exhibition">🖼️ Выставки</option>
+                    <option value="sport">⚽ Спорт</option>
+                    <option value="festival">🎪 Фестивали</option>
+                    <option value="repair">🚧 Ремонты</option>
+                    <option value="accident">🚗 ДТП</option>
+                    <option value="city_event">🏛️ Городские</option>
                 </select>
-                <button onclick="searchNearby()">Искать</button>
+                <button onclick="filterEvents()">Применить</button>
             </div>
             
             <div class="panel">
-                <h3>Ближайший объект</h3>
-                <select id="nearestType">
-                    <option value="">Любой тип</option>
-                    <option value="hospital">Больница</option>
-                    <option value="school">Школа</option>
-                    <option value="cafe">Кафе</option>
+                <h3>Фильтр по дате</h3>
+                <select id="dateFilter">
+                    <option value="all">Все события</option>
+                    <option value="today">Сегодня</option>
+                    <option value="tomorrow">Завтра</option>
+                    <option value="week">На неделю</option>
+                    <option value="month">На месяц</option>
                 </select>
-                <button onclick="findNearest()">Найти</button>
+                <button onclick="filterByDate()">Применить</button>
+            </div>
+            
+            <div class="panel">
+                <h3>Фильтр по источнику</h3>
+                <select id="sourceFilter">
+                    <option value="">Все источники</option>
+                    <option value="yandex_afisha">Яндекс.Афиша</option>
+                    <option value="manual">Ручной ввод</option>
+                    <option value="telegram">Telegram</option>
+                </select>
+                <button onclick="filterEvents()">Применить</button>
             </div>
             
             <div class="panel">
@@ -56,9 +70,18 @@
             
             <div class="panel">
                 <h3>Слои карты</h3>
-                <label><input type="checkbox" id="showObjects" checked> Объекты</label><br>
                 <label><input type="checkbox" id="showEvents" checked> События</label><br>
                 <label><input type="checkbox" id="showDistricts"> Районы</label>
+            </div>
+            
+            <div class="panel">
+                <h3>Импорт данных</h3>
+                <button onclick="importFromAfisha()" class="import-btn">
+                    📥 Импорт событий (Яндекс.Афиша)
+                </button>
+                <button onclick="importDistrictsFromOSM()" class="import-btn" style="margin-top: 10px;">
+                    🗺️ Импорт районов (OpenStreetMap)
+                </button>
             </div>
             
             <div id="results" class="results"></div>

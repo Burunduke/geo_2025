@@ -2,24 +2,6 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
 
-class ObjectBase(BaseModel):
-    name: str
-    type: str
-    address: Optional[str] = None
-
-class ObjectCreate(ObjectBase):
-    lat: float
-    lon: float
-
-class ObjectResponse(ObjectBase):
-    id: int
-    lat: float
-    lon: float
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
 class EventBase(BaseModel):
     title: str
     event_type: str
@@ -30,11 +12,21 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     lat: float
     lon: float
+    source: Optional[str] = "manual"
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    price: Optional[str] = None
+    venue: Optional[str] = None
 
 class EventResponse(EventBase):
     id: int
     lat: float
     lon: float
+    source: Optional[str] = None
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    price: Optional[str] = None
+    venue: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -49,11 +41,11 @@ class DistrictResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class NearbyObjectsRequest(BaseModel):
+class NearbyEventsRequest(BaseModel):
     lat: float
     lon: float
     radius: float  # в метрах
-    object_type: Optional[str] = None
+    event_type: Optional[str] = None
 
 class TelegramUserBase(BaseModel):
     telegram_id: int

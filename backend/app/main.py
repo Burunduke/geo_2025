@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
-from .routers import objects, events, districts
+from .routers import events, districts
 from .bot import start_bot, stop_bot
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(objects.router, prefix="/api/objects", tags=["Объекты"])
 app.include_router(events.router, prefix="/api/events", tags=["События"])
 app.include_router(districts.router, prefix="/api/districts", tags=["Районы"])
 

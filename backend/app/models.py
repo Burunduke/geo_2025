@@ -12,8 +12,13 @@ class Event(Base):
     event_type = Column(String(50), nullable=False, index=True)
     description = Column(Text)
     geom = Column(Geometry(geometry_type='POINT', srid=4326), nullable=False)
-    start_time = Column(DateTime, nullable=False)
+    start_time = Column(DateTime, nullable=False, index=True)
     end_time = Column(DateTime)
+    source = Column(String(50), default='manual', index=True)  # yandex_afisha, manual, telegram
+    source_url = Column(String(500))
+    image_url = Column(String(500))
+    price = Column(String(100))
+    venue = Column(String(255))
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class District(Base):

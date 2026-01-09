@@ -3,7 +3,6 @@ let userMarker = null;
 let searchCircle = null;
 let currentTileLayer = null;
 let layers = {
-    objects: L.layerGroup(),
     events: L.layerGroup(),
     districts: L.layerGroup()
 };
@@ -41,40 +40,9 @@ const mapStyles = {
     }
 };
 
-const icons = {
-    hospital: L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    }),
-    school: L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    }),
-    cafe: L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    }),
-    parking: L.icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    }),
-    pharmacy: L.icon({
+// Иконки для разных типов событий
+const eventIcons = {
+    concert: L.icon({
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
         iconSize: [25, 41],
@@ -82,8 +50,56 @@ const icons = {
         popupAnchor: [1, -34],
         shadowSize: [41, 41]
     }),
-    event: L.icon({
+    theater: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    exhibition: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    sport: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    festival: L.icon({
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    repair: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    accident: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }),
+    city_event: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/marker/img/marker-icon-2x-blue.png',
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
         iconSize: [25, 41],
         iconAnchor: [12, 41],
@@ -99,26 +115,16 @@ function initMap() {
     // Установка начального стиля карты
     setMapStyle('osm');
 
-    layers.objects.addTo(map);
     layers.events.addTo(map);
 
     map.on('click', onMapClick);
 
-    loadObjects();
     loadEvents();
     loadDistricts();
 
     // Обработчик смены стиля карты
     document.getElementById('mapStyle').addEventListener('change', (e) => {
         setMapStyle(e.target.value);
-    });
-
-    document.getElementById('showObjects').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            map.addLayer(layers.objects);
-        } else {
-            map.removeLayer(layers.objects);
-        }
     });
 
     document.getElementById('showEvents').addEventListener('change', (e) => {
@@ -162,7 +168,7 @@ function onMapClick(e) {
     } else {
         userMarker = L.marker([lat, lon], {
             icon: L.icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png',
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
                 shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
@@ -176,54 +182,62 @@ function onMapClick(e) {
     findDistrict(lat, lon);
 }
 
-async function loadObjects() {
+async function loadEvents(type = null, source = null, upcomingOnly = false) {
     try {
-        const objects = await api.getObjects();
-        layers.objects.clearLayers();
-
-        objects.forEach(obj => {
-            const icon = icons[obj.type] || icons.hospital;
-            const marker = L.marker([obj.lat, obj.lon], { icon: icon });
-            
-            marker.bindPopup(`
-                <b>${obj.name}</b><br>
-                Тип: ${getObjectTypeRu(obj.type)}<br>
-                Адрес: ${obj.address || 'Не указан'}
-            `);
-            
-            marker.addTo(layers.objects);
-        });
-
-        console.log(`Загружено объектов: ${objects.length}`);
-    } catch (error) {
-        console.error('Ошибка загрузки объектов:', error);
-        showError('Не удалось загрузить объекты');
-    }
-}
-
-async function loadEvents() {
-    try {
-        const events = await api.getEvents();
+        const events = await api.getEvents(type, source, upcomingOnly);
         layers.events.clearLayers();
 
         events.forEach(evt => {
-            const marker = L.marker([evt.lat, evt.lon], { icon: icons.event });
+            const icon = eventIcons[evt.event_type] || eventIcons.festival;
+            const marker = L.marker([evt.lat, evt.lon], { icon: icon });
             
             const startTime = new Date(evt.start_time).toLocaleString('ru-RU');
             const endTime = evt.end_time ? new Date(evt.end_time).toLocaleString('ru-RU') : 'Не указано';
             
-            marker.bindPopup(`
-                <b>${evt.title}</b><br>
-                Тип: ${getEventTypeRu(evt.event_type)}<br>
-                Описание: ${evt.description || 'Нет описания'}<br>
-                Начало: ${startTime}<br>
-                Конец: ${endTime}
-            `);
+            // Формируем popup с расширенной информацией
+            let popupContent = `
+                <div class="event-popup">
+                    <h3>${evt.title}</h3>
+                    <p><strong>Тип:</strong> ${getEventTypeRu(evt.event_type)}</p>
+            `;
             
+            if (evt.venue) {
+                popupContent += `<p><strong>Место:</strong> ${evt.venue}</p>`;
+            }
+            
+            if (evt.description) {
+                popupContent += `<p><strong>Описание:</strong> ${evt.description}</p>`;
+            }
+            
+            popupContent += `
+                <p><strong>Начало:</strong> ${startTime}</p>
+                <p><strong>Конец:</strong> ${endTime}</p>
+            `;
+            
+            if (evt.price) {
+                popupContent += `<p><strong>Цена:</strong> ${evt.price}</p>`;
+            }
+            
+            if (evt.source) {
+                popupContent += `<p><strong>Источник:</strong> ${getSourceRu(evt.source)}</p>`;
+            }
+            
+            if (evt.source_url) {
+                popupContent += `<p><a href="${evt.source_url}" target="_blank">Подробнее →</a></p>`;
+            }
+            
+            if (evt.image_url) {
+                popupContent += `<img src="${evt.image_url}" alt="${evt.title}" style="max-width: 200px; margin-top: 10px;">`;
+            }
+            
+            popupContent += `</div>`;
+            
+            marker.bindPopup(popupContent, { maxWidth: 300 });
             marker.addTo(layers.events);
         });
 
         console.log(`Загружено событий: ${events.length}`);
+        showInfo(`Загружено событий: ${events.length}`);
     } catch (error) {
         console.error('Ошибка загрузки событий:', error);
         showError('Не удалось загрузить события');
@@ -262,95 +276,125 @@ async function loadDistricts() {
     }
 }
 
-async function searchNearby() {
-    if (!userMarker) {
-        showError('Сначала кликните на карту, чтобы выбрать точку');
-        return;
-    }
+async function filterEvents() {
+    const eventType = document.getElementById('eventTypeFilter').value || null;
+    const source = document.getElementById('sourceFilter').value || null;
+    await loadEvents(eventType, source, false);
+}
 
-    const radius = parseFloat(document.getElementById('radius').value);
-    const objectType = document.getElementById('objectType').value || null;
-    const latlng = userMarker.getLatLng();
-
-try {
-        const result = await api.getNearbyObjects(latlng.lat, latlng.lng, radius, objectType);
+async function filterByDate() {
+    const dateFilter = document.getElementById('dateFilter').value;
+    
+    try {
+        let result;
         
-        if (searchCircle) {
-            map.removeLayer(searchCircle);
+        switch(dateFilter) {
+            case 'today':
+                result = await api.getTodayEvents();
+                displayEventsList(result.events, `События сегодня (${result.count})`);
+                break;
+            case 'tomorrow':
+                result = await api.getUpcomingEvents(1, 100);
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowEvents = result.events.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    return evtDate.toDateString() === tomorrow.toDateString();
+                });
+                displayEventsList(tomorrowEvents, `События завтра (${tomorrowEvents.length})`);
+                break;
+            case 'week':
+                result = await api.getUpcomingEvents(7, 100);
+                displayEventsList(result.events, `События на неделю (${result.count})`);
+                break;
+            case 'month':
+                result = await api.getUpcomingEvents(30, 200);
+                displayEventsList(result.events, `События на месяц (${result.count})`);
+                break;
+            default:
+                await loadEvents();
         }
-        
-        searchCircle = L.circle([latlng.lat, latlng.lng], {
-            radius: radius,
-            color: 'blue',
-            fillOpacity: 0.1
-        }).addTo(map);
-
-        displayResults(`
-            <h4>Найдено объектов: ${result.count}</h4>
-            ${result.objects.map(obj => `
-                <div class="result-item">
-                    <b>${obj.name}</b><br>
-                    Тип: ${getObjectTypeRu(obj.type)}<br>
-                    Расстояние: ${obj.distance.toFixed(0)} м
-                </div>
-            `).join('')}
-        `);
-
-        result.objects.forEach(obj => {
-            const marker = L.marker([obj.lat, obj.lon], { 
-                icon: icons[obj.type] || icons.hospital
-            }).addTo(map);
-            marker.bindPopup(`
-                <b>${obj.name}</b><br>
-                Расстояние: ${obj.distance.toFixed(0)} м
-            `).openPopup();
-        });
-
     } catch (error) {
-        console.error('Ошибка поиска:', error);
-        showError('Ошибка при поиске объектов');
+        console.error('Ошибка фильтрации по дате:', error);
+        showError('Ошибка при фильтрации событий');
     }
 }
 
-async function findNearest() {
-    if (!userMarker) {
-        showError('Сначала кликните на карту, чтобы выбрать точку');
+function displayEventsList(events, title) {
+    if (!events || events.length === 0) {
+        displayResults(`<h4>${title}</h4><p>Событий не найдено</p>`);
         return;
     }
-
-    const objectType = document.getElementById('nearestType').value || null;
-    const latlng = userMarker.getLatLng();
-
-    try {
-        const result = await api.getNearestObject(latlng.lat, latlng.lng, objectType);
-        
-        const polyline = L.polyline([
-            [latlng.lat, latlng.lng],
-            [result.lat, result.lon]
-        ], { color: 'red', weight: 3 }).addTo(map);
-
-        map.fitBounds(polyline.getBounds());
-
-        displayResults(`
-            <h4>Ближайший объект</h4>
-            <div class="result-item">
-                <b>${result.name}</b><br>
-                Тип: ${getObjectTypeRu(result.type)}<br>
-                Адрес: ${result.address || 'Не указан'}<br>
-                Расстояние: ${result.distance.toFixed(0)} м
+    
+    const eventsList = events.map(evt => {
+        const startTime = new Date(evt.start_time).toLocaleString('ru-RU');
+        return `
+            <div class="result-item" onclick="focusOnEvent(${evt.lat}, ${evt.lon})">
+                <b>${evt.title}</b><br>
+                <small>${getEventTypeRu(evt.event_type)}</small><br>
+                ${evt.venue ? `📍 ${evt.venue}<br>` : ''}
+                🕐 ${startTime}<br>
+                ${evt.price ? `💰 ${evt.price}` : ''}
             </div>
+        `;
+    }).join('');
+    
+    displayResults(`<h4>${title}</h4>${eventsList}`);
+}
+
+function focusOnEvent(lat, lon) {
+    map.setView([lat, lon], 16);
+}
+
+async function importFromAfisha() {
+    displayResults('<h4>Импорт событий...</h4><p>Пожалуйста, подождите...</p>');
+    
+    try {
+        const result = await api.importFromAfisha('voronezh', null, 30, 50);
+        
+        displayResults(`
+            <h4>✅ Импорт завершен</h4>
+            <p><strong>Всего обработано:</strong> ${result.statistics.total}</p>
+            <p><strong>Импортировано:</strong> ${result.statistics.imported}</p>
+            <p><strong>Дубликатов:</strong> ${result.statistics.duplicates}</p>
+            <p><strong>Ошибок:</strong> ${result.statistics.errors}</p>
+            ${result.statistics.skipped_no_coords ? `<p><strong>Пропущено (нет координат):</strong> ${result.statistics.skipped_no_coords}</p>` : ''}
         `);
-
-        L.marker([result.lat, result.lon], { 
-            icon: icons[result.type] || icons.hospital
-        }).addTo(map).bindPopup(`
-            <b>${result.name}</b><br>
-            Расстояние: ${result.distance.toFixed(0)} м
-        `).openPopup();
-
+        
+        // Перезагрузить события на карте
+        await loadEvents();
+        
     } catch (error) {
-        console.error('Ошибка поиска:', error);
-        showError('Ошибка при поиске ближайшего объекта');
+        console.error('Ошибка импорта:', error);
+        showError('Ошибка при импорте событий с Яндекс.Афиши');
+    }
+}
+
+async function importDistrictsFromOSM() {
+    displayResults('<h4>Импорт районов из OpenStreetMap...</h4><p>Пожалуйста, подождите, это может занять до 30 секунд...</p>');
+    
+    try {
+        const result = await api.importDistrictsFromOSM('Воронеж', 'Россия');
+        
+        displayResults(`
+            <h4>✅ Импорт районов завершен</h4>
+            <p><strong>Город:</strong> ${result.city}</p>
+            <p><strong>Всего обработано:</strong> ${result.statistics.total}</p>
+            <p><strong>Импортировано новых:</strong> ${result.statistics.imported}</p>
+            <p><strong>Обновлено:</strong> ${result.statistics.updated}</p>
+            <p><strong>Ошибок:</strong> ${result.statistics.errors}</p>
+        `);
+        
+        // Перезагрузить районы на карте
+        await loadDistricts();
+        
+        // Включить отображение районов
+        document.getElementById('showDistricts').checked = true;
+        map.addLayer(layers.districts);
+        
+    } catch (error) {
+        console.error('Ошибка импорта районов:', error);
+        showError('Ошибка при импорте районов из OpenStreetMap. Попробуйте позже.');
     }
 }
 
@@ -367,22 +411,14 @@ async function showDistrictStats(districtId) {
     try {
         const stats = await api.getDistrictStats(districtId);
         
-        const objectsList = Object.entries(stats.objects)
-            .map(([type, count]) => `${getObjectTypeRu(type)}: ${count}`)
-            .join('<br>');
-        
         const eventsList = Object.entries(stats.events)
             .map(([type, count]) => `${getEventTypeRu(type)}: ${count}`)
             .join('<br>');
 
-displayResults(`
+        displayResults(`
             <h4>Статистика: ${stats.district}</h4>
             <p><b>Население:</b> ${stats.population?.toLocaleString() || 'Не указано'}</p>
             <p><b>Площадь:</b> ${stats.area_km2} км²</p>
-            <p><b>Объектов:</b> ${stats.total_objects}</p>
-            <div style="margin-left: 10px; font-size: 0.9em;">
-                ${objectsList || 'Нет данных'}
-            </div>
             <p><b>Событий:</b> ${stats.total_events}</p>
             <div style="margin-left: 10px; font-size: 0.9em;">
                 ${eventsList || 'Нет данных'}
@@ -406,24 +442,27 @@ function showInfo(message) {
     displayResults(`<div class="info">ℹ️ ${message}</div>`);
 }
 
-function getObjectTypeRu(type) {
+function getEventTypeRu(type) {
     const types = {
-        hospital: 'Больница',
-        school: 'Школа',
-        cafe: 'Кафе',
-        parking: 'Парковка',
-        pharmacy: 'Аптека'
+        concert: '🎵 Концерт',
+        theater: '🎭 Театр',
+        exhibition: '🖼️ Выставка',
+        sport: '⚽ Спорт',
+        festival: '🎪 Фестиваль',
+        repair: '🚧 Ремонт',
+        accident: '🚗 ДТП',
+        city_event: '🏛️ Городское мероприятие'
     };
     return types[type] || type;
 }
 
-function getEventTypeRu(type) {
-    const types = {
-        accident: 'ДТП',
-        repair: 'Ремонт',
-        festival: 'Мероприятие'
+function getSourceRu(source) {
+    const sources = {
+        yandex_afisha: 'Яндекс.Афиша',
+        manual: 'Ручной ввод',
+        telegram: 'Telegram'
     };
-    return types[type] || type;
+    return sources[source] || source;
 }
 
 document.addEventListener('DOMContentLoaded', initMap);

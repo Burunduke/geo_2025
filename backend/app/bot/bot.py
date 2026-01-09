@@ -13,7 +13,9 @@ from .handlers import (
     subscribe_command,
     unsubscribe_command,
     myareas_command,
-    today_command
+    events_command,
+    tomorrow_command,
+    week_command
 )
 from .notifications import send_daily_notifications
 from .scheduler import setup_event_import_scheduler
@@ -47,11 +49,14 @@ async def start_bot():
     # Add command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("events", events_command))
+    application.add_handler(CommandHandler("today", events_command))  # Alias for events
+    application.add_handler(CommandHandler("tomorrow", tomorrow_command))
+    application.add_handler(CommandHandler("week", week_command))
     application.add_handler(CommandHandler("districts", districts_command))
     application.add_handler(CommandHandler("subscribe", subscribe_command))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe_command))
     application.add_handler(CommandHandler("myareas", myareas_command))
-    application.add_handler(CommandHandler("today", today_command))
     
     # Setup scheduler for daily notifications
     scheduler = AsyncIOScheduler()

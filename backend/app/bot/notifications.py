@@ -104,27 +104,33 @@ def format_daily_notification(today: date, events_by_district: dict) -> str:
         
         for event in events:
             event_emoji = {
-                'accident': '🚨',
-                'repair': '🚧',
-                'festival': '🎉',
                 'concert': '🎵',
                 'theater': '🎭',
-                'exhibition': '🖼',
-                'sport': '⚽️'
+                'exhibition': '🖼️',
+                'sport': '⚽',
+                'festival': '🎪',
+                'repair': '🚧',
+                'accident': '🚗',
+                'city_event': '🏛️'
             }.get(event.event_type, '📍')
             
             text += f"\n{event_emoji} *{event.title}*\n"
-            text += f"   Тип: {event.event_type}\n"
-            text += f"   Время: {event.start_time.strftime('%H:%M')}"
+            if event.venue:
+                text += f"   📍 {event.venue}\n"
+            text += f"   🕐 {event.start_time.strftime('%H:%M')}"
             if event.end_time:
                 text += f" - {event.end_time.strftime('%H:%M')}"
             text += "\n"
+            if event.price:
+                text += f"   💰 {event.price}\n"
             if event.description:
                 # Limit description length
-                desc = event.description[:150]
-                if len(event.description) > 150:
+                desc = event.description[:100]
+                if len(event.description) > 100:
                     desc += "..."
                 text += f"   {desc}\n"
+            if event.source_url:
+                text += f"   🔗 [Подробнее]({event.source_url})\n"
         
         text += "\n"
     
@@ -171,25 +177,35 @@ async def send_event_notification(bot: Bot, event_id: int):
         
         # Format message
         event_emoji = {
-            'accident': '🚨',
-            'repair': '🚧',
-            'festival': '🎉',
             'concert': '🎵',
             'theater': '🎭',
-            'exhibition': '🖼',
-            'sport': '⚽️'
+            'exhibition': '🖼️',
+            'sport': '⚽',
+            'festival': '🎪',
+            'repair': '🚧',
+            'accident': '🚗',
+            'city_event': '🏛️'
         }.get(event.event_type, '📍')
         
         message = f"🔔 *Новое событие!*\n\n"
         message += f"{event_emoji} *{event.title}*\n\n"
-        message += f"📍 Район: {', '.join([d.name for d in districts])}\n"
+        message += f"🏘 Район: {', '.join([d.name for d in districts])}\n"
+        if event.venue:
+            message += f"📍 Место: {event.venue}\n"
         message += f"📅 Дата: {event.start_time.strftime('%d.%m.%Y')}\n"
         message += f"🕐 Время: {event.start_time.strftime('%H:%M')}"
         if event.end_time:
             message += f" - {event.end_time.strftime('%H:%M')}"
         message += "\n"
+        if event.price:
+            message += f"💰 Цена: {event.price}\n"
         if event.description:
-            message += f"\n{event.description}\n"
+            desc = event.description[:200]
+            if len(event.description) > 200:
+                desc += "..."
+            message += f"\n{desc}\n"
+        if event.source_url:
+            message += f"\n🔗 [Подробнее]({event.source_url})\n"
         
         # Send to all subscribed users
         sent_count = 0

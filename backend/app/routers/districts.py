@@ -5,8 +5,9 @@ from geoalchemy2.functions import ST_Distance, ST_DWithin, ST_AsGeoJSON, ST_Make
 from typing import List, Optional
 import json
 from ..database import get_db
-from ..models import District, Event, Object
+from ..models import District, Event
 from ..schemas import DistrictResponse
+from ..utils.osm_districts import import_osm_districts
 
 router = APIRouter()
 
@@ -52,51 +53,6 @@ def find_district_by_point(
         "id": district.id,
         "name": district.name,
         "population": district.population
-    }
-
-# Объекты в районе
-@router.get("/{district_id}/objects")
-def get_objects_in_district(
-    district_id: int,
-    object_type: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """Получить все объекты в районе"""
-    district = db.query(District).filter(District.id == district_id).first()
-    
-    if not district:
-        raise HTTPException(status_code=404, detail="Район не найден")
-    
-    query = db.query(
-        Object.id,
-        Object.name,
-        Object.type,
-        Object.address,
-        func.ST_X(Object.geom).label('lon'),
-        func.ST_Y(Object.geom).label('lat')
-    ).filter(
-        func.ST_Within(Object.geom, district.geom)
-    )
-    
-    if object_type:
-        query = query.filter(Object.type == object_type)
-    
-    objects = query.all()
-    
-    return {
-        "district": district.name,
-        "count": len(objects),
-        "objects": [
-            {
-                "id": obj.id,
-                "name": obj.name,
-                "type": obj.type,
-                "address": obj.address,
-                "lat": obj.lat,
-                "lon": obj.lon
-            }
-            for obj in objects
-        ]
     }
 
 # События в районе
@@ -157,14 +113,6 @@ def get_district_stats(district_id: int, db: Session = Depends(get_db)):
     if not district:
         raise HTTPException(status_code=404, detail="Район не найден")
     
-    # Подсчет объектов по типам
-    object_stats = db.query(
-        Object.type,
-        func.count(Object.id).label('count')
-    ).filter(
-        func.ST_Within(Object.geom, district.geom)
-    ).group_by(Object.type).all()
-    
     # Подсчет событий по типам
     event_stats = db.query(
         Event.event_type,
@@ -182,9 +130,7 @@ def get_district_stats(district_id: int, db: Session = Depends(get_db)):
         "district": district.name,
         "population": district.population,
         "area_km2": round(area, 2),
-        "objects": {t[0]: t[1] for t in object_stats},
         "events": {t[0]: t[1] for t in event_stats},
-        "total_objects": sum(t[1] for t in object_stats),
         "total_events": sum(t[1] for t in event_stats)
     }
 
