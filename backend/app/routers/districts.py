@@ -4,10 +4,13 @@ from sqlalchemy import func, text
 from geoalchemy2.functions import ST_Distance, ST_DWithin, ST_AsGeoJSON, ST_MakePoint, ST_Within, ST_Buffer, ST_Intersects, ST_Area, ST_Transform, ST_SetSRID
 from typing import List, Optional
 import json
+import logging
 from ..database import get_db
 from ..models import District, Event
 from ..schemas import DistrictResponse
 from ..utils.osm_districts import import_osm_districts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -201,3 +204,42 @@ def get_districts_intersecting_point(
             for d in districts
         ]
     }
+
+# Импорт районов из OpenStreetMap
+@router.post("/import-osm")
+async def import_districts_from_osm(
+    city: str = Query("Воронеж", description="Название города"),
+    country: str = Query("Россия", description="Название страны"),
+    db: Session = Depends(get_db)
+):
+    """
+    Импортировать границы районов из OpenStreetMap
+    
+    Args:
+        city: Название города
+        country: Название страны
+        
+    Returns:
+        Статистика импорта
+    """
+    try:
+        logger.info(f"Начат импорт районов для города {city}, {country}")
+        
+        # Импортируем районы
+        stats = import_osm_districts(city=city, country=country)
+        
+        logger.info(f"Импорт завершен: {stats}")
+        
+        return {
+            "success": True,
+            "city": city,
+            "country": country,
+            "statistics": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка импорта районов: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при импорте районов: {str(e)}"
+        )

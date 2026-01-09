@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 from .routers import events, districts
 from .bot import start_bot, stop_bot
+from .cities_config import get_all_cities
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,18 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown"""
     # Startup
     logger.info("Starting application...")
+    
+    # Initialize districts from OSM if needed
+    try:
+        from .init_districts import init_districts_from_osm
+        import threading
+        # Run in background thread to not block startup
+        thread = threading.Thread(target=init_districts_from_osm, daemon=True)
+        thread.start()
+        logger.info("Districts initialization started in background")
+    except Exception as e:
+        logger.error(f"Failed to start districts initialization: {e}")
+    
     try:
         await start_bot()
         logger.info("Telegram bot started")
@@ -59,3 +72,10 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+@app.get("/api/cities")
+def get_cities():
+    """Получить список доступных городов"""
+    return {
+        "cities": get_all_cities()
+    }

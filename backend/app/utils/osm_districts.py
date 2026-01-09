@@ -42,45 +42,70 @@ class OSMDistrictsImporter:
         Returns:
             Список словарей с информацией о районах
         """
-        # Overpass QL запрос для получения административных границ районов
+        # Упрощенный запрос для поиска районов
         overpass_query = f"""
-        [out:json][timeout:25];
-        area[name="{self.city}"]["admin_level"="6"]->.city;
+        [out:json][timeout:60];
+        area[name="{self.city}"]->.city;
         (
-          relation["admin_level"="9"](area.city);
-          relation["admin_level"="8"](area.city);
+          relation["boundary"="administrative"]["admin_level"~"^(8|9|10)$"](area.city);
         );
         out geom;
         """
         
-        try:
-            logger.info(f"Запрос районов для города {self.city}")
-            response = requests.post(
-                self.OVERPASS_API,
-                data={'data': overpass_query},
-                headers=self.headers,
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Ошибка Overpass API: {response.status_code}")
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Запрос районов для города {self.city} (попытка {attempt + 1}/{max_retries})")
+                
+                response = requests.post(
+                    self.OVERPASS_API,
+                    data={'data': overpass_query},
+                    headers=self.headers,
+                    timeout=60
+                )
+                
+                if response.status_code == 504:
+                    logger.warning(f"Timeout от Overpass API, повтор через {retry_delay} сек...")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error("Превышено количество попыток")
+                        return []
+                
+                if response.status_code != 200:
+                    logger.error(f"Ошибка Overpass API: {response.status_code}")
+                    return []
+                
+                data = response.json()
+                districts = []
+                
+                for element in data.get('elements', []):
+                    if element.get('type') == 'relation':
+                        district = self._parse_district(element)
+                        if district:
+                            districts.append(district)
+                
+                logger.info(f"Найдено районов: {len(districts)}")
+                return districts
+                
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout при запросе, повтор через {retry_delay} сек...")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    logger.error("Превышено количество попыток")
+                    return []
+            except Exception as e:
+                logger.error(f"Ошибка при получении районов: {e}", exc_info=True)
                 return []
-            
-            data = response.json()
-            districts = []
-            
-            for element in data.get('elements', []):
-                if element.get('type') == 'relation':
-                    district = self._parse_district(element)
-                    if district:
-                        districts.append(district)
-            
-            logger.info(f"Найдено районов: {len(districts)}")
-            return districts
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении районов: {e}", exc_info=True)
-            return []
+        
+        return []
     
     def _parse_district(self, element: Dict) -> Optional[Dict]:
         """

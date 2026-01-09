@@ -57,6 +57,14 @@
             </div>
             
             <div class="panel">
+                <h3>Выбор города</h3>
+                <select id="citySelect">
+                    <option value="">Загрузка...</option>
+                </select>
+                <button onclick="changeCity()">Перейти</button>
+            </div>
+            
+            <div class="panel">
                 <h3>Стиль карты</h3>
                 <select id="mapStyle">
                     <option value="osm">OpenStreetMap</option>
@@ -71,16 +79,13 @@
             <div class="panel">
                 <h3>Слои карты</h3>
                 <label><input type="checkbox" id="showEvents" checked> События</label><br>
-                <label><input type="checkbox" id="showDistricts"> Районы</label>
+                <label><input type="checkbox" id="showDistricts" checked> Районы</label>
             </div>
             
             <div class="panel">
                 <h3>Импорт данных</h3>
                 <button onclick="importFromAfisha()" class="import-btn">
                     📥 Импорт событий (Яндекс.Афиша)
-                </button>
-                <button onclick="importDistrictsFromOSM()" class="import-btn" style="margin-top: 10px;">
-                    🗺️ Импорт районов (OpenStreetMap)
                 </button>
             </div>
             

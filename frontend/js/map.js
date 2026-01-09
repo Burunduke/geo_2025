@@ -2,6 +2,7 @@ let map;
 let userMarker = null;
 let searchCircle = null;
 let currentTileLayer = null;
+let currentCity = null;
 let layers = {
     events: L.layerGroup(),
     districts: L.layerGroup()
@@ -108,8 +109,8 @@ const eventIcons = {
     })
 };
 
-function initMap() {
-    // Создание карты (Воронеж)
+async function initMap() {
+    // Создание карты (Воронеж по умолчанию)
     map = L.map('map').setView([51.6606, 39.2003], 13);
 
     // Установка начального стиля карты
@@ -118,6 +119,9 @@ function initMap() {
     layers.events.addTo(map);
 
     map.on('click', onMapClick);
+
+    // Загрузка списка городов
+    await loadCities();
 
     loadEvents();
     loadDistricts();
@@ -463,6 +467,68 @@ function getSourceRu(source) {
         telegram: 'Telegram'
     };
     return sources[source] || source;
+}
+
+async function loadCities() {
+    try {
+        const result = await api.getCities();
+        const citySelect = document.getElementById('citySelect');
+        
+        citySelect.innerHTML = '';
+        
+        result.cities.forEach(city => {
+            const option = document.createElement('option');
+            option.value = city.slug;
+            option.textContent = city.name;
+            option.dataset.lat = city.lat;
+            option.dataset.lon = city.lon;
+            option.dataset.zoom = city.zoom;
+            
+            // Воронеж по умолчанию
+            if (city.slug === 'voronezh') {
+                option.selected = true;
+                currentCity = city;
+            }
+            
+            citySelect.appendChild(option);
+        });
+        
+        console.log(`Загружено городов: ${result.cities.length}`);
+    } catch (error) {
+        console.error('Ошибка загрузки городов:', error);
+        showError('Не удалось загрузить список городов');
+    }
+}
+
+function changeCity() {
+    const citySelect = document.getElementById('citySelect');
+    const selectedOption = citySelect.options[citySelect.selectedIndex];
+    
+    if (!selectedOption) return;
+    
+    const lat = parseFloat(selectedOption.dataset.lat);
+    const lon = parseFloat(selectedOption.dataset.lon);
+    const zoom = parseInt(selectedOption.dataset.zoom);
+    const cityName = selectedOption.textContent;
+    
+    // Перемещаем карту к выбранному городу
+    map.setView([lat, lon], zoom);
+    
+    // Обновляем текущий город
+    currentCity = {
+        slug: selectedOption.value,
+        name: cityName,
+        lat: lat,
+        lon: lon,
+        zoom: zoom
+    };
+    
+    // Перезагружаем данные
+    loadEvents();
+    loadDistricts();
+    
+    showInfo(`Переход к городу: <b>${cityName}</b>`);
+    console.log(`Выбран город: ${cityName}`);
 }
 
 document.addEventListener('DOMContentLoaded', initMap);

@@ -119,6 +119,12 @@ class CityGeoAPI {
             method: 'POST'
         });
     }
+
+    // Города
+    
+    async getCities() {
+        return this.request('/cities');
+    }
 }
 
 const api = new CityGeoAPI();
