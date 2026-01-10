@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, Boolean, Time
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 from datetime import datetime
@@ -38,3 +38,29 @@ class TelegramUser(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_interaction = Column(DateTime, default=datetime.utcnow)
     
+    # Notification preferences
+    notifications_enabled = Column(Boolean, default=False)
+    notification_radius = Column(Integer, default=5000)  # Radius in meters
+    user_location = Column(Geometry(geometry_type='POINT', srid=4326))
+    preferred_city = Column(String(50))
+    
+    # Event type preferences (JSON string)
+    preferred_event_types = Column(Text)  # JSON array as string
+    
+    # Notification settings
+    notify_on_import = Column(Boolean, default=True)
+    quiet_hours_start = Column(Time)
+    quiet_hours_end = Column(Time)
+
+class NotificationHistory(Base):
+    __tablename__ = "notification_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('telegram_users.id', ondelete='CASCADE'), nullable=False)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete='CASCADE'), nullable=False)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    notification_type = Column(String(50), default='new_event')
+    
+    # Relationships
+    user = relationship("TelegramUser")
+    event = relationship("Event")

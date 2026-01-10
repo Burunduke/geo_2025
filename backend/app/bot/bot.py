@@ -1,7 +1,7 @@
 """
 Main Telegram Bot Application
 """
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import logging
@@ -11,7 +11,25 @@ from .handlers import (
     help_command,
     events_command,
     tomorrow_command,
-    week_command
+    week_command,
+    get_main_menu_keyboard
+)
+from .notification_handlers import (
+    notifications_command,
+    setup_notifications_command,
+    receive_location,
+    skip_location,
+    receive_radius,
+    receive_event_types,
+    receive_city,
+    cancel_setup,
+    enable_notifications_command,
+    disable_notifications_command,
+    LOCATION,
+    RADIUS,
+    EVENT_TYPES,
+    CITY,
+    CONFIRM
 )
 from .notifications import send_daily_notifications
 from .scheduler import setup_event_import_scheduler
@@ -49,6 +67,46 @@ async def start_bot():
     application.add_handler(CommandHandler("today", events_command))  # Alias for events
     application.add_handler(CommandHandler("tomorrow", tomorrow_command))
     application.add_handler(CommandHandler("week", week_command))
+    
+    # Add notification command handlers
+    application.add_handler(CommandHandler("notifications", notifications_command))
+    application.add_handler(CommandHandler("enable_notifications", enable_notifications_command))
+    application.add_handler(CommandHandler("disable_notifications", disable_notifications_command))
+    
+    # IMPORTANT: Add conversation handler BEFORE text message handlers
+    # This ensures ConversationHandler has priority over menu buttons
+    notification_setup_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("setup_notifications", setup_notifications_command),
+            MessageHandler(filters.Regex("^⚙️ Настроить уведомления$"), setup_notifications_command)
+        ],
+        states={
+            LOCATION: [
+                MessageHandler(filters.LOCATION, receive_location),
+                CommandHandler("skip", skip_location)
+            ],
+            RADIUS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_radius)
+            ],
+            EVENT_TYPES: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_event_types)
+            ],
+            CITY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_city)
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_setup)],
+        name="notification_setup",
+        persistent=False
+    )
+    application.add_handler(notification_setup_handler)
+    
+    # Add text message handlers for menu buttons (AFTER ConversationHandler)
+    application.add_handler(MessageHandler(filters.Regex("^📅 События сегодня$"), events_command))
+    application.add_handler(MessageHandler(filters.Regex("^📆 События завтра$"), tomorrow_command))
+    application.add_handler(MessageHandler(filters.Regex("^📊 События на неделю$"), week_command))
+    application.add_handler(MessageHandler(filters.Regex("^🔔 Уведомления$"), notifications_command))
+    application.add_handler(MessageHandler(filters.Regex("^ℹ️ Помощь$"), help_command))
     
     # Setup scheduler for daily notifications
     scheduler = AsyncIOScheduler()
@@ -102,3 +160,9 @@ async def stop_bot():
 def get_bot_application():
     """Get the current bot application instance"""
     return application
+
+def get_bot():
+    """Get the current bot instance"""
+    if application:
+        return application.bot
+    return None

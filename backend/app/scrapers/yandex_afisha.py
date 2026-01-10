@@ -420,7 +420,7 @@ class YandexAfishaScraper:
             db: Database session (optional, will create new if not provided)
         
         Returns:
-            Dictionary with import statistics
+            Dictionary with import statistics including new_event_ids
         """
         if db is None:
             db = SessionLocal()
@@ -435,7 +435,8 @@ class YandexAfishaScraper:
                 'updated': 0,
                 'duplicates': 0,
                 'errors': 0,
-                'skipped_no_coords': 0
+                'skipped_no_coords': 0,
+                'new_event_ids': []  # Track IDs of newly created events
             }
             
             for event_data in events:
@@ -498,7 +499,9 @@ class YandexAfishaScraper:
                         )
                         
                         db.add(new_event)
+                        db.flush()  # Flush to get the ID
                         stats['created'] += 1
+                        stats['new_event_ids'].append(new_event.id)  # Track new event ID
                         logger.info(f"Created event: {event_data['title']}")
                     
                     db.commit()

@@ -46,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(events.router, prefix="/api/events", tags=["События"])
+app.include_router(events.router, prefix="/api", tags=["События"])
 
 @app.get("/")
 def read_root():

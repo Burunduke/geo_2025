@@ -8,6 +8,8 @@ class CityGeoAPI {
     async request(endpoint, options = {}) {
         const url = `${this.baseUrl}${endpoint}`;
         try {
+            console.log(`API Request: ${options.method || 'GET'} ${url}`);
+            
             const response = await fetch(url, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -17,12 +19,16 @@ class CityGeoAPI {
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error(`API Error Response (${response.status}):`, errorText);
+                throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log(`API Response: ${url}`, data);
+            return data;
         } catch (error) {
-            console.error('API Request failed:', error);
+            console.error('API Request failed:', url, error);
             throw error;
         }
     }
@@ -100,6 +106,12 @@ class CityGeoAPI {
 
     async importTestMoscowEvents() {
         return this.request('/events/import/test-moscow', {
+            method: 'POST'
+        });
+    }
+
+    async importTestSpbEvents() {
+        return this.request('/events/import/test-spb', {
             method: 'POST'
         });
     }

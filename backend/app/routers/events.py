@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Получить все события (устаревший endpoint - рекомендуется использовать /{city}/events)
-@router.get("/", response_model=List[EventResponse])
+@router.get("/events", response_model=List[EventResponse])
 def get_events(
     event_type: Optional[str] = None,
     source: Optional[str] = None,
@@ -79,7 +79,7 @@ def get_events(
     ]
 
 # Создать новое событие
-@router.post("/", response_model=EventResponse)
+@router.post("/events", response_model=EventResponse)
 def create_event(
     event: EventCreate,
     db: Session = Depends(get_db)
@@ -122,7 +122,7 @@ def create_event(
     )
 
 # Получить событие по ID
-@router.get("/{event_id}", response_model=EventResponse)
+@router.get("/events/{event_id}", response_model=EventResponse)
 def get_event(
     event_id: int,
     db: Session = Depends(get_db)
@@ -166,7 +166,7 @@ def get_event(
     )
 
 # События в радиусе (устаревший endpoint - рекомендуется использовать /{city}/events/nearby)
-@router.get("/nearby")
+@router.get("/events/nearby")
 def get_nearby_events(
     lat: float = Query(...),
     lon: float = Query(...),
@@ -223,7 +223,7 @@ def get_nearby_events(
     }
 
 # События сегодня
-@router.get("/filter/today")
+@router.get("/events/filter/today")
 def get_today_events(db: Session = Depends(get_db)):
     """Получить события на сегодня"""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -274,7 +274,7 @@ def get_today_events(db: Session = Depends(get_db)):
     }
 
 # Предстоящие события
-@router.get("/filter/upcoming")
+@router.get("/events/filter/upcoming")
 def get_upcoming_events(
     days: int = Query(7, description="Количество дней вперед"),
     limit: int = Query(50, description="Максимальное количество событий"),
@@ -329,7 +329,7 @@ def get_upcoming_events(
     }
 
 # Типы событий
-@router.get("/types")
+@router.get("/events/types")
 def get_event_types(db: Session = Depends(get_db)):
     """Получить список типов событий"""
     types = db.query(
@@ -343,11 +343,12 @@ def get_event_types(db: Session = Depends(get_db)):
     ]
 
 # Импорт событий из KudaGo
-@router.post("/import/kudago")
-def import_kudago_events(
+@router.post("/events/import/kudago")
+async def import_kudago_events(
     city: str = Query("voronezh", description="Город для импорта"),
     categories: Optional[List[str]] = Query(None, description="Категории событий"),
     days_ahead: int = Query(30, description="Дней вперед"),
+    limit: int = Query(500, description="Максимальное количество событий для импорта"),
     db: Session = Depends(get_db)
 ):
     """
@@ -357,29 +358,50 @@ def import_kudago_events(
     - city: Город (voronezh, moscow, spb и т.д.)
     - categories: Список категорий (concert, theater, exhibition, sport, festival)
     - days_ahead: Количество дней вперед для импорта
+    - limit: Максимальное количество событий (по умолчанию 500)
     """
     from ..scrapers.kudago import scrape_and_import_kudago_events
+    from ..bot.realtime_notifications import send_realtime_notifications
+    from ..bot import get_bot
     
     try:
         stats = scrape_and_import_kudago_events(
             city=city,
             categories=categories,
             days_ahead=days_ahead,
-            limit=100
+            limit=limit
         )
+        # Calculate imported as created + updated
+        imported = stats.get('created', 0) + stats.get('updated', 0)
+        
+        # Send notifications about new events
+        new_event_ids = stats.get('new_event_ids', [])
+        if new_event_ids:
+            try:
+                bot = get_bot()
+                if bot:
+                    await send_realtime_notifications(bot, new_event_ids)
+                    logger.info(f"Sent notifications for {len(new_event_ids)} new events")
+            except Exception as e:
+                logger.error(f"Error sending notifications: {e}")
+                # Don't fail the import if notifications fail
+        
         return {
             "status": "success",
             "source": "kudago",
-            "statistics": stats,
-            "message": f"Импортировано {stats.get('imported', 0)} событий из KudaGo"
+            "statistics": {
+                **stats,
+                "imported": imported
+            },
+            "message": f"Импортировано {imported} событий из KudaGo"
         }
     except Exception as e:
         logger.error(f"KudaGo import error: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка импорта из KudaGo: {str(e)}")
 
 # Импорт событий из Яндекс.Афиши
-@router.post("/import/yandex")
-def import_yandex_events(
+@router.post("/events/import/yandex")
+async def import_yandex_events(
     city: str = Query("voronezh", description="Город для импорта"),
     categories: Optional[List[str]] = Query(None, description="Категории событий"),
     days_ahead: int = Query(30, description="Дней вперед"),
@@ -394,6 +416,8 @@ def import_yandex_events(
     - days_ahead: Количество дней вперед для импорта
     """
     from ..scrapers.yandex_afisha import scrape_and_import_yandex_events
+    from ..bot.realtime_notifications import send_realtime_notifications
+    from ..bot import get_bot
     
     try:
         stats = scrape_and_import_yandex_events(
@@ -402,24 +426,44 @@ def import_yandex_events(
             days_ahead=days_ahead,
             limit_per_category=50
         )
+        # Calculate imported as created + updated
+        imported = stats.get('created', 0) + stats.get('updated', 0)
+        
+        # Send notifications about new events
+        new_event_ids = stats.get('new_event_ids', [])
+        if new_event_ids:
+            try:
+                bot = get_bot()
+                if bot:
+                    await send_realtime_notifications(bot, new_event_ids)
+                    logger.info(f"Sent notifications for {len(new_event_ids)} new events")
+            except Exception as e:
+                logger.error(f"Error sending notifications: {e}")
+                # Don't fail the import if notifications fail
+        
         return {
             "status": "success",
             "source": "yandex_afisha",
-            "statistics": stats,
-            "message": f"Импортировано {stats.get('imported', 0)} событий из Яндекс.Афиши"
+            "statistics": {
+                **stats,
+                "imported": imported
+            },
+            "message": f"Импортировано {imported} событий из Яндекс.Афиши"
         }
     except Exception as e:
         logger.error(f"Yandex Afisha import error: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка импорта из Яндекс.Афиши: {str(e)}")
 
 # Импорт тестовых данных для Москвы
-@router.post("/import/test-moscow")
-def import_test_moscow_events(db: Session = Depends(get_db)):
+@router.post("/events/import/test-moscow")
+async def import_test_moscow_events(db: Session = Depends(get_db)):
     """
     Импортировать тестовые события для Москвы (для демонстрации)
     """
     import random
     from datetime import datetime, timedelta
+    from ..bot.realtime_notifications import send_realtime_notifications
+    from ..bot import get_bot
     
     # Moscow venues with real coordinates
     venues = [
@@ -473,6 +517,7 @@ def import_test_moscow_events(db: Session = Depends(get_db)):
     
     imported = 0
     errors = 0
+    new_event_ids = []
     
     for category, templates in event_templates.items():
         for i, template in enumerate(templates):
@@ -507,6 +552,8 @@ def import_test_moscow_events(db: Session = Depends(get_db)):
                 )
             
                 db.add(new_event)
+                db.flush()  # Get the ID
+                new_event_ids.append(new_event.id)
                 db.commit()
                 imported += 1
                 
@@ -515,6 +562,17 @@ def import_test_moscow_events(db: Session = Depends(get_db)):
                 db.rollback()
                 errors += 1
     
+    # Send notifications about new events
+    if new_event_ids:
+        try:
+            bot = get_bot()
+            if bot:
+                await send_realtime_notifications(bot, new_event_ids)
+                logger.info(f"Sent notifications for {len(new_event_ids)} new test events")
+        except Exception as e:
+            logger.error(f"Error sending notifications: {e}")
+            # Don't fail the import if notifications fail
+    
     return {
         "status": "success",
         "source": "manual",
@@ -522,9 +580,142 @@ def import_test_moscow_events(db: Session = Depends(get_db)):
             "total": len([t for templates in event_templates.values() for t in templates]),
             "imported": imported,
             "duplicates": 0,
-            "errors": errors
+            "errors": errors,
+            "new_event_ids": new_event_ids
         },
         "message": f"Импортировано {imported} тестовых событий для Москвы"
+    }
+
+# Импорт тестовых данных для Санкт-Петербурга
+@router.post("/events/import/test-spb")
+async def import_test_spb_events(db: Session = Depends(get_db)):
+    """
+    Импортировать тестовые события для Санкт-Петербурга (для демонстрации)
+    """
+    import random
+    from datetime import datetime, timedelta
+    from ..bot.realtime_notifications import send_realtime_notifications
+    from ..bot import get_bot
+    
+    # Saint Petersburg venues with real coordinates
+    venues = [
+        {"name": "Мариинский театр", "lat": 59.9259, "lon": 30.2967, "address": "Театральная пл., 1"},
+        {"name": "Эрмитаж", "lat": 59.9398, "lon": 30.3146, "address": "Дворцовая наб., 34"},
+        {"name": "Петропавловская крепость", "lat": 59.9504, "lon": 30.3164, "address": "Петропавловская крепость, 3"},
+        {"name": "Исаакиевский собор", "lat": 59.9341, "lon": 30.3061, "address": "Исаакиевская пл., 4"},
+        {"name": "Газпром Арена", "lat": 59.9726, "lon": 30.2214, "address": "Футбольная аллея, 1"},
+        {"name": "БКЗ Октябрьский", "lat": 59.9291, "lon": 30.3195, "address": "Лиговский пр., 6"},
+        {"name": "Летний сад", "lat": 59.9453, "lon": 30.3356, "address": "Летний сад"},
+    ]
+    
+    # Event templates by category
+    event_templates = {
+        'concert': [
+            "Концерт симфонического оркестра",
+            "Рок-фестиваль",
+            "Джазовый концерт",
+            "Концерт классической музыки",
+            "Вечер романсов"
+        ],
+        'theater': [
+            "Балет 'Лебединое озеро'",
+            "Опера 'Евгений Онегин'",
+            "Спектакль 'Горе от ума'",
+            "Мюзикл 'Анна Каренина'",
+            "Драма 'Вишневый сад'"
+        ],
+        'exhibition': [
+            "Выставка импрессионистов",
+            "Современное искусство",
+            "Фотовыставка 'Петербург'",
+            "Выставка русской живописи",
+            "Историческая экспозиция"
+        ],
+        'sport': [
+            "Футбольный матч Зенит",
+            "Хоккейный матч СКА",
+            "Баскетбольная игра",
+            "Волейбольный турнир",
+            "Легкоатлетические соревнования"
+        ],
+        'festival': [
+            "Фестиваль 'Белые ночи'",
+            "Фестиваль уличной еды",
+            "Музыкальный фестиваль",
+            "Фестиваль искусств",
+            "День города"
+        ]
+    }
+    
+    imported = 0
+    errors = 0
+    new_event_ids = []
+    
+    for category, templates in event_templates.items():
+        for i, template in enumerate(templates):
+            try:
+                venue = random.choice(venues)
+                days_offset = random.randint(1, 30)
+                start_time = datetime.now() + timedelta(days=days_offset, hours=random.randint(10, 20))
+                
+                # Check for duplicates
+                existing = db.query(Event).filter(
+                    Event.title == f"{template} (тест)",
+                    Event.source == 'manual',
+                    func.date(Event.start_time) == func.date(start_time)
+                ).first()
+                
+                if existing:
+                    continue
+                
+                new_event = Event(
+                    title=f"{template} (тест)",
+                    event_type=category,
+                    description=f"Тестовое событие для демонстрации. {template} в {venue['name']}.",
+                    geom=func.ST_SetSRID(func.ST_MakePoint(venue['lon'], venue['lat']), 4326),
+                    start_time=start_time,
+                    end_time=start_time + timedelta(hours=2),
+                    source='manual',
+                    source_url=None,
+                    image_url=None,
+                    price=random.choice(['Бесплатно', 'от 500 ₽', '300-800 ₽', 'от 1000 ₽', '1500-3000 ₽']),
+                    venue=venue['name'],
+                    city='spb'
+                )
+            
+                db.add(new_event)
+                db.flush()  # Get the ID
+                new_event_ids.append(new_event.id)
+                db.commit()
+                imported += 1
+                
+            except Exception as e:
+                logger.error(f"Error importing test event: {e}")
+                db.rollback()
+                errors += 1
+    
+    # Send notifications about new events
+    if new_event_ids:
+        try:
+            bot = get_bot()
+            if bot:
+                await send_realtime_notifications(bot, new_event_ids)
+                logger.info(f"Sent notifications for {len(new_event_ids)} new test events")
+        except Exception as e:
+            logger.error(f"Error sending notifications: {e}")
+            # Don't fail the import if notifications fail
+    
+    return {
+        "status": "success",
+        "source": "manual",
+        "statistics": {
+            "total": len([t for templates in event_templates.values() for t in templates]),
+            "imported": imported,
+            "duplicates": 0,
+            "errors": errors,
+            "new_event_ids": new_event_ids
+        },
+        "message": f"Импортировано {imported} тестовых событий для Санкт-Петербурга"
     }
 
 # Новые endpoints с поддержкой городов
@@ -534,7 +725,7 @@ def import_test_moscow_events(db: Session = Depends(get_db)):
 def get_city_events(
     city: str,
     event_type: Optional[str] = None,
-    upcoming_only: bool = True,
+    upcoming_only: Optional[bool] = None,
     bounds: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
@@ -577,7 +768,7 @@ def get_city_events(
         except ValueError:
             pass  # Невалидные bounds - игнорируем
     
-    if upcoming_only:
+    if upcoming_only is True:
         query = query.filter(Event.start_time > datetime.utcnow())
     
     if event_type:

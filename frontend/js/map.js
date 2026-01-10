@@ -7,6 +7,7 @@ let dateRangePicker = null;
 let selectedEventTypes = [];
 let selectedSources = [];
 let allEvents = [];
+let displayLimit = 500; // По умолчанию показываем 500 событий
 let layers = {
     events: L.layerGroup()
 };
@@ -113,8 +114,8 @@ const eventIcons = {
 };
 
 async function initMap() {
-    // Создание карты (Москва по умолчанию)
-    map = L.map('map').setView([55.7558, 37.6173], 11);
+    // Создание карты (Санкт-Петербург по умолчанию)
+    map = L.map('map').setView([59.9343, 30.3351], 11);
 
     // Установка начального стиля карты
     setMapStyle('osm');
@@ -142,42 +143,75 @@ async function initMap() {
 
     // Инициализация селектора стиля карты
     initMapStyleSelector();
+    
+    // Инициализация селектора лимита отображения
+    initDisplayLimitSelector();
 }
 
 // Инициализация календаря с диапазоном дат
 function initDateRangePicker() {
-    dateRangePicker = flatpickr("#dateRangePicker", {
-        mode: "range",
-        dateFormat: "d.m.Y",
-        locale: "ru",
-        static: true,
-        animate: false,
-        position: "auto left",
-        zIndex: 9999,
-        onChange: function(selectedDates, dateStr, instance) {
-            applyFilters();
-        },
-        onReady: function(selectedDates, dateStr, instance) {
-            // Ensure calendar is visible when opened
-            instance.calendar.style.opacity = "1";
-            instance.calendar.style.visibility = "visible";
-            instance.calendar.style.zIndex = "9999";
-            instance.calendar.style.position = "absolute";
-        },
-        onOpen: function(selectedDates, dateStr, instance) {
-            // Ensure calendar is visible when opened
-            instance.calendar.style.opacity = "1";
-            instance.calendar.style.visibility = "visible";
-            instance.calendar.style.zIndex = "9999";
-            instance.calendar.style.position = "absolute";
-        }
-    });
+    const inputElement = document.getElementById('dateRangePicker');
+    
+    if (!inputElement) {
+        console.error('Элемент dateRangePicker не найден!');
+        return;
+    }
+    
+    try {
+        dateRangePicker = flatpickr(inputElement, {
+            mode: "range",
+            dateFormat: "d.m.Y",
+            locale: "ru",
+            static: true,
+            animate: false,
+            position: "auto left",
+            onClose: function(selectedDates, dateStr, instance) {
+                // Применяем фильтр только после закрытия календаря
+                console.log('Календарь закрыт, выбрано дат:', selectedDates.length);
+                if (selectedDates.length > 0) {
+                    console.log('Выбранные даты:', selectedDates.map(d => d.toISOString()));
+                }
+                applyFilters();
+            }
+        });
+        
+        console.log('Flatpickr инициализирован:', dateRangePicker !== null);
+    } catch (error) {
+        console.error('Ошибка инициализации Flatpickr:', error);
+    }
     
     // Кнопка очистки фильтра дат
-    document.getElementById('clearDateFilter').addEventListener('click', () => {
-        dateRangePicker.clear();
-        applyFilters();
-    });
+    const clearBtn = document.getElementById('clearDateFilter');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Нажата кнопка очистки фильтра дат');
+            
+            if (dateRangePicker && typeof dateRangePicker.clear === 'function') {
+                dateRangePicker.clear();
+                console.log('Календарь очищен');
+            } else {
+                console.error('dateRangePicker.clear не является функцией');
+                // Альтернативный способ очистки
+                if (inputElement) {
+                    inputElement.value = '';
+                }
+            }
+            
+            // Снимаем выделение с кнопок быстрых фильтров
+            const quickDateButtons = document.querySelectorAll('.quick-date-btn');
+            quickDateButtons.forEach(b => {
+                b.style.background = '';
+                b.style.color = '';
+            });
+            
+            applyFilters();
+        });
+        console.log('Обработчик кнопки очистки установлен');
+    } else {
+        console.error('Кнопка clearDateFilter не найдена!');
+    }
 }
 
 // Инициализация мультиселекта типов событий
@@ -275,20 +309,32 @@ function updateSelectedSources() {
 // Инициализация быстрых фильтров дат
 function initQuickDateFilters() {
     const quickDateButtons = document.querySelectorAll('.quick-date-btn');
+    console.log(`Найдено кнопок быстрых фильтров: ${quickDateButtons.length}`);
     
     quickDateButtons.forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
             const filter = btn.dataset.filter;
+            console.log(`Нажата кнопка быстрого фильтра: ${filter}`);
             
             // Снимаем выделение со всех кнопок
-            quickDateButtons.forEach(b => b.style.background = '');
+            quickDateButtons.forEach(b => {
+                b.style.background = '';
+                b.style.color = '';
+            });
             
             // Выделяем текущую кнопку
             btn.style.background = 'linear-gradient(135deg, var(--primary-color), var(--secondary-color))';
             btn.style.color = 'white';
             
             // Очищаем календарь
-            dateRangePicker.clear();
+            if (dateRangePicker && typeof dateRangePicker.clear === 'function') {
+                dateRangePicker.clear();
+            } else if (dateRangePicker && dateRangePicker.input) {
+                dateRangePicker.input.value = '';
+            }
             
             // Применяем быстрый фильтр
             await applyQuickDateFilter(filter);
@@ -339,35 +385,120 @@ function initMapStyleSelector() {
     }
 }
 
+// Инициализация селектора лимита отображения
+function initDisplayLimitSelector() {
+    const limitSelect = document.getElementById('displayLimit');
+    
+    if (!limitSelect) {
+        console.error('Элемент displayLimit не найден!');
+        return;
+    }
+    
+    limitSelect.addEventListener('change', () => {
+        const value = parseInt(limitSelect.value);
+        displayLimit = value;
+        console.log(`Лимит отображения изменен на: ${displayLimit === -1 ? 'все' : displayLimit}`);
+        
+        // Применяем фильтры заново с новым лимитом
+        applyFilters();
+    });
+    
+    console.log('Селектор лимита отображения инициализирован');
+}
+
 // Применение быстрого фильтра дат
 async function applyQuickDateFilter(filter) {
     try {
-        let result;
+        console.log(`Применение быстрого фильтра: ${filter}`);
+        const city = currentCity ? currentCity.slug : 'moscow';
+        
+        // Получаем все события города
+        const allCityEvents = await api.getCityEvents(city, {
+            upcomingOnly: false
+        });
+        
+        console.log(`Загружено событий для фильтра: ${allCityEvents.length}`);
+        
+        const now = new Date();
+        let filteredEvents = [];
+        let title = '';
         
         switch(filter) {
             case 'today':
-                result = await api.getTodayEvents();
-                displayFilteredEvents(result.events, `События сегодня (${result.count})`);
-                break;
-            case 'tomorrow':
-                result = await api.getUpcomingEvents(1, 100);
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowEvents = result.events.filter(evt => {
+                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                console.log(`Фильтр "Сегодня": ${todayStart.toISOString()} - ${todayEnd.toISOString()}`);
+                
+                filteredEvents = allCityEvents.filter(evt => {
                     const evtDate = new Date(evt.start_time);
-                    return evtDate.toDateString() === tomorrow.toDateString();
+                    return evtDate >= todayStart && evtDate <= todayEnd;
                 });
-                displayFilteredEvents(tomorrowEvents, `События завтра (${tomorrowEvents.length})`);
+                title = `События сегодня (${filteredEvents.length})`;
                 break;
+                
+            case 'tomorrow':
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStart = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 0, 0, 0, 0);
+                const tomorrowEnd = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 23, 59, 59, 999);
+                console.log(`Фильтр "Завтра": ${tomorrowStart.toISOString()} - ${tomorrowEnd.toISOString()}`);
+                
+                filteredEvents = allCityEvents.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    return evtDate >= tomorrowStart && evtDate <= tomorrowEnd;
+                });
+                title = `События завтра (${filteredEvents.length})`;
+                break;
+                
             case 'week':
-                result = await api.getUpcomingEvents(7, 100);
-                displayFilteredEvents(result.events, `События на неделю (${result.count})`);
+                const weekEnd = new Date(now);
+                weekEnd.setDate(weekEnd.getDate() + 7);
+                weekEnd.setHours(23, 59, 59, 999);
+                console.log(`Фильтр "Неделя": ${now.toISOString()} - ${weekEnd.toISOString()}`);
+                
+                filteredEvents = allCityEvents.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    return evtDate >= now && evtDate <= weekEnd;
+                });
+                title = `События на неделю (${filteredEvents.length})`;
                 break;
+                
             case 'month':
-                result = await api.getUpcomingEvents(30, 200);
-                displayFilteredEvents(result.events, `События на месяц (${result.count})`);
+                const monthEnd = new Date(now);
+                monthEnd.setDate(monthEnd.getDate() + 30);
+                monthEnd.setHours(23, 59, 59, 999);
+                console.log(`Фильтр "Месяц": ${now.toISOString()} - ${monthEnd.toISOString()}`);
+                
+                filteredEvents = allCityEvents.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    return evtDate >= now && evtDate <= monthEnd;
+                });
+                title = `События на месяц (${filteredEvents.length})`;
                 break;
         }
+        
+        console.log(`Отфильтровано событий: ${filteredEvents.length}`);
+        
+        // Применяем дополнительные фильтры (типы и источники)
+        if (selectedEventTypes.length > 0) {
+            filteredEvents = filteredEvents.filter(evt =>
+                selectedEventTypes.includes(evt.event_type)
+            );
+            console.log(`После фильтра по типам: ${filteredEvents.length}`);
+        }
+        
+        if (selectedSources.length > 0) {
+            filteredEvents = filteredEvents.filter(evt =>
+                selectedSources.includes(evt.source)
+            );
+            console.log(`После фильтра по источникам: ${filteredEvents.length}`);
+        }
+        
+        // Обновляем allEvents для других фильтров
+        allEvents = allCityEvents;
+        
+        displayFilteredEvents(filteredEvents, title);
+        
     } catch (error) {
         console.error('Ошибка фильтрации по дате:', error);
         showError('Ошибка при фильтрации событий');
@@ -377,8 +508,38 @@ async function applyQuickDateFilter(filter) {
 // Применение всех фильтров
 async function applyFilters() {
     try {
-        // Получаем все события
-        allEvents = await api.getEvents(null, null, false);
+        console.log('=== НАЧАЛО ПРИМЕНЕНИЯ ФИЛЬТРОВ ===');
+        
+        // Получаем город
+        const city = currentCity ? currentCity.slug : 'moscow';
+        
+        console.log(`Применение фильтров для города: ${city}`);
+        console.log(`Выбранные типы: ${selectedEventTypes.join(', ') || 'все'}`);
+        console.log(`Выбранные источники: ${selectedSources.join(', ') || 'все'}`);
+        console.log(`Календарь инициализирован: ${dateRangePicker !== null}`);
+        
+        if (dateRangePicker) {
+            console.log(`Выбрано дат в календаре: ${dateRangePicker.selectedDates ? dateRangePicker.selectedDates.length : 0}`);
+            if (dateRangePicker.selectedDates && dateRangePicker.selectedDates.length > 0) {
+                console.log(`Даты:`, dateRangePicker.selectedDates.map(d => d.toISOString()));
+            }
+        }
+        
+        // Получаем все события для текущего города
+        const eventsData = await api.getCityEvents(city, {
+            upcomingOnly: false
+        });
+        
+        // Validate response
+        if (!eventsData || !Array.isArray(eventsData)) {
+            console.error('Invalid events data received:', eventsData);
+            allEvents = [];
+            displayFilteredEvents([]);
+            return;
+        }
+        
+        allEvents = eventsData;
+        console.log(`Загружено событий: ${allEvents.length}`);
         
         let filteredEvents = [...allEvents];
         
@@ -387,6 +548,7 @@ async function applyFilters() {
             filteredEvents = filteredEvents.filter(evt =>
                 selectedEventTypes.includes(evt.event_type)
             );
+            console.log(`После фильтра по типам: ${filteredEvents.length}`);
         }
         
         // Фильтр по источникам
@@ -394,27 +556,67 @@ async function applyFilters() {
             filteredEvents = filteredEvents.filter(evt =>
                 selectedSources.includes(evt.source)
             );
+            console.log(`После фильтра по источникам: ${filteredEvents.length}`);
         }
         
+        console.log(`Всего событий перед фильтром по датам: ${filteredEvents.length}`);
+        
         // Фильтр по датам из календаря
-        const selectedDates = dateRangePicker.selectedDates;
-        if (selectedDates.length === 2) {
-            const startDate = selectedDates[0];
-            const endDate = selectedDates[1];
-            endDate.setHours(23, 59, 59, 999); // Включаем весь конечный день
+        if (dateRangePicker && dateRangePicker.selectedDates && dateRangePicker.selectedDates.length > 0) {
+            console.log('Применяем фильтр по датам из календаря');
+            const selectedDates = dateRangePicker.selectedDates;
             
-            filteredEvents = filteredEvents.filter(evt => {
-                const evtDate = new Date(evt.start_time);
-                return evtDate >= startDate && evtDate <= endDate;
-            });
+            if (selectedDates.length === 1) {
+                // Одна дата выбрана - фильтруем события на этот день
+                const selectedDate = new Date(selectedDates[0]);
+                // Создаем начало и конец дня в локальном времени
+                const startOfDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0, 0);
+                const endOfDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+                
+                console.log(`Фильтр по одной дате: ${startOfDay.toLocaleDateString('ru-RU')}`);
+                console.log(`Диапазон времени: ${startOfDay.toISOString()} - ${endOfDay.toISOString()}`);
+                
+                filteredEvents = filteredEvents.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    const isInRange = evtDate >= startOfDay && evtDate <= endOfDay;
+                    if (!isInRange) {
+                        console.log(`Событие "${evt.title}" (${evtDate.toISOString()}) не попало в диапазон`);
+                    }
+                    return isInRange;
+                });
+                console.log(`После фильтра по дате: ${filteredEvents.length}`);
+            } else if (selectedDates.length === 2) {
+                // Диапазон дат выбран
+                const startDate = new Date(selectedDates[0]);
+                const endDate = new Date(selectedDates[1]);
+                // Создаем начало первого дня и конец последнего дня в локальном времени
+                const startOfRange = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0);
+                const endOfRange = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999);
+                
+                console.log(`Фильтр по диапазону: ${startOfRange.toLocaleDateString('ru-RU')} - ${endOfRange.toLocaleDateString('ru-RU')}`);
+                console.log(`Диапазон времени: ${startOfRange.toISOString()} - ${endOfRange.toISOString()}`);
+                
+                filteredEvents = filteredEvents.filter(evt => {
+                    const evtDate = new Date(evt.start_time);
+                    const isInRange = evtDate >= startOfRange && evtDate <= endOfRange;
+                    if (!isInRange) {
+                        console.log(`Событие "${evt.title}" (${evtDate.toISOString()}) не попало в диапазон`);
+                    }
+                    return isInRange;
+                });
+                console.log(`После фильтра по датам: ${filteredEvents.length}`);
+            }
         }
         
         // Отображаем отфильтрованные события
+        console.log(`Итого событий после всех фильтров: ${filteredEvents.length}`);
+        console.log('=== КОНЕЦ ПРИМЕНЕНИЯ ФИЛЬТРОВ ===');
         displayFilteredEvents(filteredEvents);
         
     } catch (error) {
         console.error('Ошибка применения фильтров:', error);
-        showError('Ошибка при фильтрации событий');
+        console.error('Детали ошибки:', error.message, error.stack);
+        showError(`Ошибка при фильтрации событий: ${error.message}`);
     }
 }
 
@@ -422,12 +624,33 @@ async function applyFilters() {
 function displayFilteredEvents(events, title = null) {
     layers.events.clearLayers();
     
-    events.forEach(evt => {
+    // Применяем лимит отображения
+    let eventsToDisplay = events;
+    let totalEvents = events.length;
+    
+    if (displayLimit > 0 && events.length > displayLimit) {
+        eventsToDisplay = events.slice(0, displayLimit);
+        console.log(`Ограничение отображения: показано ${displayLimit} из ${totalEvents} событий`);
+    }
+    
+    eventsToDisplay.forEach(evt => {
         const icon = eventIcons[evt.event_type] || eventIcons.festival;
         const marker = L.marker([evt.lat, evt.lon], { icon: icon });
         
-        const startTime = new Date(evt.start_time).toLocaleString('ru-RU');
-        const endTime = evt.end_time ? new Date(evt.end_time).toLocaleString('ru-RU') : 'Не указано';
+        // Форматируем даты с учетом часового пояса
+        const startDate = new Date(evt.start_time);
+        const startTime = formatEventDate(startDate);
+        
+        let endTime = 'Не указано';
+        if (evt.end_time) {
+            const endDate = new Date(evt.end_time);
+            // Проверяем, не является ли это "бесконечной" датой (круглогодичное событие)
+            if (endDate.getFullYear() > 2100) {
+                endTime = 'Постоянная экспозиция';
+            } else {
+                endTime = formatEventDate(endDate);
+            }
+        }
         
         let popupContent = `
             <div class="event-popup">
@@ -470,8 +693,8 @@ function displayFilteredEvents(events, title = null) {
         marker.addTo(layers.events);
     });
     
-    // Обновляем счетчик событий
-    updateEventCount(events.length);
+    // Обновляем счетчик событий (показываем общее количество и отображаемое)
+    updateEventCount(eventsToDisplay.length, totalEvents);
     
     // Отображаем список событий
     if (title) {
@@ -482,10 +705,15 @@ function displayFilteredEvents(events, title = null) {
 }
 
 // Обновление счетчика событий
-function updateEventCount(count) {
+function updateEventCount(displayedCount, totalCount = null) {
     const eventCountElement = document.getElementById('eventCount');
     const span = eventCountElement.querySelector('span');
-    span.textContent = `${count} ${getEventWord(count)}`;
+    
+    if (totalCount !== null && displayedCount < totalCount) {
+        span.textContent = `${displayedCount} из ${totalCount} ${getEventWord(totalCount)}`;
+    } else {
+        span.textContent = `${displayedCount} ${getEventWord(displayedCount)}`;
+    }
 }
 
 // Склонение слова "событие"
@@ -544,7 +772,11 @@ function onMapClick(e) {
 
 async function loadEvents(type = null, source = null, upcomingOnly = false) {
     try {
-        const events = await api.getEvents(type, source, upcomingOnly);
+        const city = currentCity ? currentCity.slug : 'moscow';
+        const events = await api.getCityEvents(city, {
+            eventType: type,
+            upcomingOnly: upcomingOnly
+        });
         allEvents = events;
         displayFilteredEvents(events);
     } catch (error) {
@@ -560,7 +792,7 @@ function displayEventsList(events, title) {
     }
     
     const eventsList = events.map(evt => {
-        const startTime = new Date(evt.start_time).toLocaleString('ru-RU');
+        const startTime = formatEventDate(new Date(evt.start_time));
         return `
             <div class="result-item" onclick="focusOnEvent(${evt.lat}, ${evt.lon})">
                 <b>${evt.title}</b><br>
@@ -612,15 +844,27 @@ async function importFromYandex() {
 }
 
 async function importTestMoscow() {
-    displayResults(`<h4>Импорт тестовых данных для Москвы...</h4><p>Создаем тестовые события...<br>Пожалуйста, подождите...</p>`);
+    const city = currentCity ? currentCity.slug : 'spb';
+    const cityName = currentCity ? currentCity.name : 'Санкт-Петербург';
+    
+    displayResults(`<h4>Импорт тестовых данных для ${cityName}...</h4><p>Создаем тестовые события...<br>Пожалуйста, подождите...</p>`);
     
     try {
-        const result = await api.importTestMoscowEvents();
-        displayImportResult(result, 'Тестовые данные (Москва)');
+        let result;
+        if (city === 'moscow') {
+            result = await api.importTestMoscowEvents();
+        } else if (city === 'spb') {
+            result = await api.importTestSpbEvents();
+        } else {
+            // Для других городов используем СПб по умолчанию
+            result = await api.importTestSpbEvents();
+        }
+        
+        displayImportResult(result, `Тестовые данные (${cityName})`);
         await loadEvents();
     } catch (error) {
         console.error('Ошибка импорта тестовых данных:', error);
-        showError('Ошибка при импорте тестовых данных для Москвы');
+        showError(`Ошибка при импорте тестовых данных для ${cityName}`);
     }
 }
 
@@ -709,6 +953,30 @@ function getSourceRu(source) {
     return sources[source] || source;
 }
 
+// Форматирование даты события с проверкой корректности
+function formatEventDate(date) {
+    // Проверяем, что дата валидна
+    if (!date || isNaN(date.getTime())) {
+        return 'Дата не указана';
+    }
+    
+    // Проверяем год - если слишком старый или слишком новый, это ошибка данных
+    const year = date.getFullYear();
+    if (year < 1900 || year > 2100) {
+        return 'Дата уточняется';
+    }
+    
+    // Форматируем нормальную дату
+    return date.toLocaleString('ru-RU', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Moscow'
+    });
+}
+
 async function loadCities() {
     try {
         const result = await api.getCities();
@@ -724,7 +992,7 @@ async function loadCities() {
             option.dataset.lon = city.lon;
             option.dataset.zoom = city.zoom;
             
-            if (city.slug === 'moscow') {
+            if (city.slug === 'spb') {
                 option.selected = true;
                 currentCity = city;
             }

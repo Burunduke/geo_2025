@@ -132,6 +132,22 @@
                 </select>
             </div>
             
+            <!-- Лимит отображения -->
+            <div class="panel">
+                <h3><i class="fas fa-eye"></i> Показывать событий</h3>
+                <select id="displayLimit" class="styled-select">
+                    <option value="50">50 событий</option>
+                    <option value="100">100 событий</option>
+                    <option value="200">200 событий</option>
+                    <option value="500" selected>500 событий</option>
+                    <option value="1000">1000 событий</option>
+                    <option value="-1">Все события</option>
+                </select>
+                <div class="limit-info">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Ограничение влияет только на отображение на карте</span>
+                </div>
+            </div>
             
             <!-- Импорт данных -->
             <div class="panel">
@@ -143,7 +159,7 @@
                     <i class="fas fa-newspaper"></i> Яндекс.Афиша
                 </button>
                 <button onclick="importTestMoscow()" class="import-btn test-btn">
-                    <i class="fas fa-flask"></i> Тест (Москва)
+                    <i class="fas fa-flask"></i> Тест (Санкт-Петербург)
                 </button>
             </div>
             

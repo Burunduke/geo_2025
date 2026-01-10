@@ -1,13 +1,23 @@
 """
 Telegram Bot Command Handlers
 """
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
 from ..database import SessionLocal
 from ..models import TelegramUser, Event
+
+
+def get_main_menu_keyboard():
+    """Get main menu keyboard with buttons"""
+    keyboard = [
+        [KeyboardButton("📅 События сегодня"), KeyboardButton("📆 События завтра")],
+        [KeyboardButton("📊 События на неделю"), KeyboardButton("🔔 Уведомления")],
+        [KeyboardButton("⚙️ Настроить уведомления"), KeyboardButton("ℹ️ Помощь")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
@@ -36,11 +46,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             welcome_text = (
                 f"👋 Привет, {user.first_name}!\n\n"
                 "Я бот для уведомлений о событиях в вашем городе.\n\n"
-                "Доступные команды:\n"
-                "/events - События сегодня\n"
-                "/tomorrow - События завтра\n"
-                "/week - События на неделю\n"
-                "/help - Помощь"
+                "Используйте кнопки меню ниже для навигации 👇"
             )
         else:
             db_user.last_interaction = datetime.utcnow()
@@ -49,26 +55,36 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             welcome_text = (
                 f"👋 С возвращением, {user.first_name}!\n\n"
-                "Используйте /help для просмотра доступных команд."
+                "Используйте кнопки меню ниже для навигации 👇"
             )
         
-        await update.message.reply_text(welcome_text)
+        await update.message.reply_text(welcome_text, reply_markup=get_main_menu_keyboard())
     finally:
         db.close()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
     help_text = (
-        "📚 *Доступные команды:*\n\n"
-        "/start - Начать работу с ботом\n"
-        "/events - События сегодня\n"
-        "/tomorrow - События завтра\n"
-        "/week - События на неделю\n"
-        "/help - Показать эту справку\n\n"
-        "💡 *Как это работает:*\n"
-        "Используйте команды для просмотра событий в городе на разные периоды времени."
+        "📚 *Справка по боту*\n\n"
+        "*📅 Просмотр событий:*\n"
+        "• События сегодня - показать события на сегодня\n"
+        "• События завтра - показать события на завтра\n"
+        "• События на неделю - показать события на 7 дней\n\n"
+        "*🔔 Уведомления:*\n"
+        "• Уведомления - посмотреть текущие настройки\n"
+        "• Настроить уведомления - настроить персональные уведомления\n\n"
+        "💡 *Как работают уведомления:*\n"
+        "1. Нажмите 'Настроить уведомления'\n"
+        "2. Отправьте свою геолокацию\n"
+        "3. Выберите радиус поиска (1-20 км)\n"
+        "4. Выберите типы событий\n"
+        "5. Получайте уведомления о новых событиях автоматически!\n\n"
+        "🎯 *Типы событий:*\n"
+        "🎵 Концерты • 🎭 Театр • 🖼️ Выставки\n"
+        "⚽ Спорт • 🎪 Фестивали\n\n"
+        "Используйте кнопки меню для навигации 👇"
     )
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await update.message.reply_text(help_text, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
 
 async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /events command - show today's events"""
@@ -131,7 +147,7 @@ async def events_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"   🔗 [Подробнее]({event.source_url})\n"
                 text += "\n"
         
-        await update.message.reply_text(text, parse_mode='Markdown')
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
     finally:
         db.close()
 
@@ -196,7 +212,7 @@ async def tomorrow_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"   🔗 [Подробнее]({event.source_url})\n"
                 text += "\n"
         
-        await update.message.reply_text(text, parse_mode='Markdown')
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
     finally:
         db.close()
 
@@ -259,6 +275,6 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"   🔗 [Подробнее]({event.source_url})\n"
                 text += "\n"
         
-        await update.message.reply_text(text, parse_mode='Markdown')
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=get_main_menu_keyboard())
     finally:
         db.close()

@@ -6,10 +6,12 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime, timedelta
 import logging
 import os
+import asyncio
 from ..scrapers.kudago import scrape_and_import_kudago_events
 from ..scrapers.yandex_afisha import scrape_and_import_yandex_events
 from ..cities_config import CITIES
 from .notifications import send_daily_notifications
+from .realtime_notifications import send_realtime_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +62,15 @@ def setup_event_import_scheduler(scheduler: AsyncIOScheduler):
         )
         logger.info("Scheduled daily notifications at 9:00 AM")
 
-def auto_import_events_job():
+async def auto_import_events_job():
     """
     Job function to automatically import events from all sources for all cities
+    Now includes real-time notifications for new events
     """
     try:
         logger.info("Starting automatic event import for all cities")
+        
+        all_new_event_ids = []
         
         for city_slug in CITIES.keys():
             try:
@@ -77,6 +82,10 @@ def auto_import_events_job():
                 )
                 logger.info(f"KudaGo import for {city_slug}: {kudago_stats}")
                 
+                # Collect new event IDs
+                if kudago_stats.get('new_event_ids'):
+                    all_new_event_ids.extend(kudago_stats['new_event_ids'])
+                
                 # Import from Yandex Afisha
                 yandex_stats = scrape_and_import_yandex_events(
                     city=city_slug,
@@ -85,11 +94,28 @@ def auto_import_events_job():
                 )
                 logger.info(f"Yandex Afisha import for {city_slug}: {yandex_stats}")
                 
+                # Collect new event IDs
+                if yandex_stats.get('new_event_ids'):
+                    all_new_event_ids.extend(yandex_stats['new_event_ids'])
+                
             except Exception as e:
                 logger.error(f"Error importing events for city {city_slug}: {e}")
                 continue
         
-        logger.info("Automatic event import completed for all cities")
+        logger.info(f"Automatic event import completed for all cities. Total new events: {len(all_new_event_ids)}")
+        
+        # Send real-time notifications for new events
+        if all_new_event_ids:
+            try:
+                from .bot import get_bot_application
+                application = get_bot_application()
+                if application and application.bot:
+                    logger.info(f"Sending real-time notifications for {len(all_new_event_ids)} new events")
+                    await send_realtime_notifications(application.bot, all_new_event_ids)
+                else:
+                    logger.warning("Bot application not available for real-time notifications")
+            except Exception as e:
+                logger.error(f"Error sending real-time notifications: {e}")
         
     except Exception as e:
         logger.error(f"Error in auto import job: {e}")
@@ -132,7 +158,13 @@ def send_daily_notifications_job():
     """
     try:
         logger.info("Starting daily notifications")
-        send_daily_notifications()
-        logger.info("Daily notifications completed")
+        # Get the bot application instance
+        from .bot import get_bot_application
+        application = get_bot_application()
+        if application:
+            send_daily_notifications(application.bot)
+            logger.info("Daily notifications completed")
+        else:
+            logger.error("Bot application not available for notifications")
     except Exception as e:
         logger.error(f"Error in daily notifications job: {e}")
