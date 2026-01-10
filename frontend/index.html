@@ -136,8 +136,14 @@
             <!-- Импорт данных -->
             <div class="panel">
                 <h3><i class="fas fa-download"></i> Импорт данных</h3>
-                <button onclick="importFromAfisha()" class="import-btn">
-                    <i class="fas fa-cloud-download-alt"></i> Импорт событий
+                <button onclick="importFromKudaGo()" class="import-btn kudago-btn">
+                    <i class="fas fa-calendar-alt"></i> KudaGo
+                </button>
+                <button onclick="importFromYandex()" class="import-btn yandex-btn">
+                    <i class="fas fa-newspaper"></i> Яндекс.Афиша
+                </button>
+                <button onclick="importTestMoscow()" class="import-btn test-btn">
+                    <i class="fas fa-flask"></i> Тест (Москва)
                 </button>
             </div>
             
@@ -198,6 +204,7 @@
     
     <!-- Custom JS -->
     <script src="js/api.js"></script>
+    <script src="js/eventCache.js"></script>
     <script src="js/map.js"></script>
 </body>
 </html>

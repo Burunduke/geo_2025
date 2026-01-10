@@ -10,7 +10,7 @@ import time
 import random
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from ..models import Event, District
+from ..models import Event
 from ..database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -144,10 +144,9 @@ class YandexAfishaScraper:
                 logger.error(f"Unexpected error for {endpoint}: {e}")
                 continue
         
-        # If no events found from API, generate sample events for testing
+        # If no events found from API, just return empty list
         if not events:
-            logger.warning(f"No events fetched from API for category {category}, generating sample data")
-            events = self._generate_sample_events(category, limit)
+            logger.warning(f"No events fetched from API for category {category}")
         
         return events
     
@@ -244,9 +243,11 @@ class YandexAfishaScraper:
                 'start_time': start_time,
                 'end_time': end_time,
                 'source': 'yandex_afisha',
+                'source_id': str(event_id) if event_id else None,  # Новое поле
                 'source_url': source_url,
                 'image_url': image_url,
-                'price': price
+                'price': price,
+                'city': self.city  # Новое поле
             }
             
         except Exception as e:
@@ -409,94 +410,6 @@ class YandexAfishaScraper:
         
         return default_coords
     
-    def _generate_sample_events(self, category: str, limit: int) -> List[Dict]:
-        """
-        Generate sample events for testing when API is unavailable
-        
-        Args:
-            category: Event category
-            limit: Number of events to generate
-        
-        Returns:
-            List of sample event dictionaries
-        """
-        # Voronezh venues with real coordinates
-        venues = [
-            {"name": "Театр драмы имени Кольцова", "lat": 51.6605, "lon": 39.2005, "address": "пр. Революции, 55"},
-            {"name": "Концертный зал", "lat": 51.6719, "lon": 39.2106, "address": "пл. Ленина, 12"},
-            {"name": "Дворец спорта Юбилейный", "lat": 51.6891, "lon": 39.1847, "address": "ул. Свободы, 45"},
-            {"name": "Арт-пространство Коммуна", "lat": 51.6650, "lon": 39.1950, "address": "ул. Карла Маркса, 67"},
-            {"name": "Центр Галереи Чижова", "lat": 51.6612, "lon": 39.2001, "address": "ул. Кольцовская, 35"},
-        ]
-        
-        # Event templates by category
-        event_templates = {
-            'concert': [
-                "Концерт классической музыки",
-                "Рок-концерт",
-                "Джазовый вечер",
-                "Симфонический оркестр",
-                "Концерт популярной музыки"
-            ],
-            'theatre': [
-                "Спектакль 'Вишневый сад'",
-                "Комедия 'Ревизор'",
-                "Драма 'Три сестры'",
-                "Мюзикл",
-                "Детский спектакль"
-            ],
-            'exhibition': [
-                "Выставка современного искусства",
-                "Фотовыставка",
-                "Выставка живописи",
-                "Историческая экспозиция",
-                "Выставка скульптуры"
-            ],
-            'sport': [
-                "Футбольный матч",
-                "Баскетбольная игра",
-                "Хоккейный матч",
-                "Волейбольный турнир",
-                "Легкоатлетические соревнования"
-            ],
-            'festival': [
-                "Городской фестиваль",
-                "Фестиваль уличной еды",
-                "Музыкальный фестиваль",
-                "Фестиваль искусств",
-                "Культурный фестиваль"
-            ]
-        }
-        
-        templates = event_templates.get(category, event_templates['festival'])
-        events = []
-        
-        for i in range(min(limit, len(templates))):
-            venue = random.choice(venues)
-            template = templates[i % len(templates)]
-            
-            # Generate event date (random day in next 30 days)
-            days_offset = random.randint(1, 30)
-            start_time = datetime.now() + timedelta(days=days_offset, hours=random.randint(10, 20))
-            
-            event = {
-                'title': f"{template} #{i+1}",
-                'event_type': self.TYPE_MAPPING.get(category, 'festival'),
-                'description': f"Приглашаем на {template.lower()}. Это тестовое событие, созданное автоматически.",
-                'venue': venue['name'],
-                'lat': venue['lat'],
-                'lon': venue['lon'],
-                'start_time': start_time,
-                'end_time': start_time + timedelta(hours=2),
-                'source': 'yandex_afisha',
-                'source_url': f"https://afisha.yandex.ru/{self.city}/event/sample-{i}",
-                'image_url': None,
-                'price': random.choice(['Бесплатно', 'от 500 ₽', '300-800 ₽', 'от 1000 ₽'])
-            }
-            events.append(event)
-        
-        logger.info(f"Generated {len(events)} sample events for category {category}")
-        return events
     
     def import_events_to_db(self, events: List[Dict], db: Session = None) -> Dict:
         """
@@ -518,7 +431,8 @@ class YandexAfishaScraper:
         try:
             stats = {
                 'total': len(events),
-                'imported': 0,
+                'created': 0,
+                'updated': 0,
                 'duplicates': 0,
                 'errors': 0,
                 'skipped_no_coords': 0
@@ -538,41 +452,56 @@ class YandexAfishaScraper:
                         stats['skipped_no_coords'] += 1
                         continue
                     
-                    # Check for duplicates (same title, similar date, similar location)
-                    # Use a more sophisticated duplicate check
-                    existing = db.query(Event).filter(
-                        Event.title == event_data['title'],
-                        Event.source == 'yandex_afisha',
-                        func.date(Event.start_time) == func.date(event_data['start_time'])
-                    ).first()
+                    # Check for duplicates by source_id
+                    existing = None
+                    if event_data.get('source_id'):
+                        existing = db.query(Event).filter(
+                            Event.source_id == event_data['source_id'],
+                            Event.source == 'yandex_afisha'
+                        ).first()
+                    
+                    # Fallback to old deduplication if no source_id
+                    if not existing:
+                        existing = db.query(Event).filter(
+                            Event.title == event_data['title'],
+                            Event.source == 'yandex_afisha',
+                            func.date(Event.start_time) == func.date(event_data['start_time'])
+                        ).first()
                     
                     if existing:
-                        logger.debug(f"Duplicate event found: {event_data['title']}")
-                        stats['duplicates'] += 1
-                        continue
+                        # Update existing event
+                        existing.description = event_data.get('description', existing.description)
+                        existing.image_url = event_data.get('image_url', existing.image_url)
+                        existing.price = event_data.get('price', existing.price)
+                        existing.last_updated = datetime.utcnow()
+                        stats['updated'] += 1
+                        logger.info(f"Updated event: {event_data['title']}")
+                    else:
+                        # Create new event
+                        new_event = Event(
+                            title=event_data['title'],
+                            event_type=event_data['event_type'],
+                            description=event_data.get('description'),
+                            geom=func.ST_SetSRID(
+                                func.ST_MakePoint(event_data['lon'], event_data['lat']),
+                                4326
+                            ),
+                            start_time=event_data['start_time'],
+                            end_time=event_data.get('end_time'),
+                            source=event_data.get('source', 'yandex_afisha'),
+                            source_id=event_data.get('source_id'),
+                            source_url=event_data.get('source_url'),
+                            image_url=event_data.get('image_url'),
+                            price=event_data.get('price'),
+                            venue=event_data.get('venue'),
+                            city=event_data.get('city', self.city)
+                        )
+                        
+                        db.add(new_event)
+                        stats['created'] += 1
+                        logger.info(f"Created event: {event_data['title']}")
                     
-                    # Create new event with all fields
-                    new_event = Event(
-                        title=event_data['title'],
-                        event_type=event_data['event_type'],
-                        description=event_data.get('description'),
-                        geom=func.ST_SetSRID(
-                            func.ST_MakePoint(event_data['lon'], event_data['lat']),
-                            4326
-                        ),
-                        start_time=event_data['start_time'],
-                        end_time=event_data.get('end_time'),
-                        source=event_data.get('source', 'yandex_afisha'),
-                        source_url=event_data.get('source_url'),
-                        image_url=event_data.get('image_url'),
-                        price=event_data.get('price'),
-                        venue=event_data.get('venue')
-                    )
-                    
-                    db.add(new_event)
                     db.commit()
-                    stats['imported'] += 1
-                    logger.info(f"Imported event: {event_data['title']}")
                     
                 except Exception as e:
                     logger.error(f"Error importing event {event_data.get('title')}: {e}", exc_info=True)

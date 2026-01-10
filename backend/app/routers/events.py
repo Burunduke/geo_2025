@@ -4,13 +4,16 @@ from sqlalchemy import func, text
 from geoalchemy2.functions import ST_Distance, ST_DWithin, ST_AsGeoJSON, ST_MakePoint
 from typing import List, Optional
 from datetime import datetime, timedelta
+import logging
 from ..database import get_db
-from ..models import Event, District
+from ..models import Event
 from ..schemas import EventResponse, EventCreate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Получить все события
+# Получить все события (устаревший endpoint - рекомендуется использовать /{city}/events)
 @router.get("/", response_model=List[EventResponse])
 def get_events(
     event_type: Optional[str] = None,
@@ -19,7 +22,7 @@ def get_events(
     upcoming_only: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
-    """Получить все события с фильтрацией"""
+    """Получить все события с фильтрацией (устаревший - используйте /{city}/events)"""
     query = db.query(
         Event.id,
         Event.title,
@@ -35,7 +38,7 @@ def get_events(
         Event.price,
         Event.venue,
         Event.created_at
-    )
+    ).filter(Event.is_archived == False)
     
     if event_type:
         query = query.filter(Event.event_type == event_type)
@@ -93,7 +96,8 @@ def create_event(
         source_url=event.source_url,
         image_url=event.image_url,
         price=event.price,
-        venue=event.venue
+        venue=event.venue,
+        city='moscow'  # Временно, пока не будет передачи города в схеме
     )
     
     db.add(new_event)
@@ -161,7 +165,7 @@ def get_event(
         created_at=event.created_at
     )
 
-# События в радиусе
+# События в радиусе (устаревший endpoint - рекомендуется использовать /{city}/events/nearby)
 @router.get("/nearby")
 def get_nearby_events(
     lat: float = Query(...),
@@ -170,7 +174,7 @@ def get_nearby_events(
     event_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Найти события в радиусе"""
+    """Найти события в радиусе (устаревший - используйте /{city}/events/nearby)"""
     user_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
     
     query = db.query(
@@ -187,6 +191,7 @@ def get_nearby_events(
             func.ST_Transform(user_point, 3857)
         ).label('distance')
     ).filter(
+        Event.is_archived == False,
         func.ST_DWithin(
             func.ST_Transform(Event.geom, 3857),
             func.ST_Transform(user_point, 3857),
@@ -323,17 +328,221 @@ def get_upcoming_events(
         ]
     }
 
-# События в районе
-@router.get("/by-district/{district_id}")
-def get_events_by_district(
-    district_id: int,
-    upcoming_only: bool = Query(False),
+# Типы событий
+@router.get("/types")
+def get_event_types(db: Session = Depends(get_db)):
+    """Получить список типов событий"""
+    types = db.query(
+        Event.event_type,
+        func.count(Event.id).label('count')
+    ).group_by(Event.event_type).all()
+    
+    return [
+        {"type": t[0], "count": t[1]}
+        for t in types
+    ]
+
+# Импорт событий из KudaGo
+@router.post("/import/kudago")
+def import_kudago_events(
+    city: str = Query("voronezh", description="Город для импорта"),
+    categories: Optional[List[str]] = Query(None, description="Категории событий"),
+    days_ahead: int = Query(30, description="Дней вперед"),
     db: Session = Depends(get_db)
 ):
-    """Получить события в конкретном районе"""
-    district = db.query(District).filter(District.id == district_id).first()
-    if not district:
-        raise HTTPException(status_code=404, detail="District not found")
+    """
+    Импортировать события из KudaGo
+    
+    Параметры:
+    - city: Город (voronezh, moscow, spb и т.д.)
+    - categories: Список категорий (concert, theater, exhibition, sport, festival)
+    - days_ahead: Количество дней вперед для импорта
+    """
+    from ..scrapers.kudago import scrape_and_import_kudago_events
+    
+    try:
+        stats = scrape_and_import_kudago_events(
+            city=city,
+            categories=categories,
+            days_ahead=days_ahead,
+            limit=100
+        )
+        return {
+            "status": "success",
+            "source": "kudago",
+            "statistics": stats,
+            "message": f"Импортировано {stats.get('imported', 0)} событий из KudaGo"
+        }
+    except Exception as e:
+        logger.error(f"KudaGo import error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка импорта из KudaGo: {str(e)}")
+
+# Импорт событий из Яндекс.Афиши
+@router.post("/import/yandex")
+def import_yandex_events(
+    city: str = Query("voronezh", description="Город для импорта"),
+    categories: Optional[List[str]] = Query(None, description="Категории событий"),
+    days_ahead: int = Query(30, description="Дней вперед"),
+    db: Session = Depends(get_db)
+):
+    """
+    Импортировать события из Яндекс.Афиши
+    
+    Параметры:
+    - city: Город (voronezh, moscow, spb и т.д.)
+    - categories: Список категорий (concert, theater, exhibition, sport, festival)
+    - days_ahead: Количество дней вперед для импорта
+    """
+    from ..scrapers.yandex_afisha import scrape_and_import_yandex_events
+    
+    try:
+        stats = scrape_and_import_yandex_events(
+            city=city,
+            categories=categories,
+            days_ahead=days_ahead,
+            limit_per_category=50
+        )
+        return {
+            "status": "success",
+            "source": "yandex_afisha",
+            "statistics": stats,
+            "message": f"Импортировано {stats.get('imported', 0)} событий из Яндекс.Афиши"
+        }
+    except Exception as e:
+        logger.error(f"Yandex Afisha import error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка импорта из Яндекс.Афиши: {str(e)}")
+
+# Импорт тестовых данных для Москвы
+@router.post("/import/test-moscow")
+def import_test_moscow_events(db: Session = Depends(get_db)):
+    """
+    Импортировать тестовые события для Москвы (для демонстрации)
+    """
+    import random
+    from datetime import datetime, timedelta
+    
+    # Moscow venues with real coordinates
+    venues = [
+        {"name": "Большой театр", "lat": 55.7603, "lon": 37.6186, "address": "Театральная пл., 1"},
+        {"name": "Крокус Сити Холл", "lat": 55.8233, "lon": 37.4108, "address": "65-66 км МКАД"},
+        {"name": "Лужники", "lat": 55.7153, "lon": 37.5531, "address": "Лужнецкая наб., 24"},
+        {"name": "Третьяковская галерея", "lat": 55.7414, "lon": 37.6207, "address": "Лаврушинский пер., 10"},
+        {"name": "Парк Горького", "lat": 55.7312, "lon": 37.6017, "address": "ул. Крымский Вал, 9"},
+        {"name": "ВДНХ", "lat": 55.8304, "lon": 37.6278, "address": "пр-т Мира, 119"},
+        {"name": "Зарядье", "lat": 55.7513, "lon": 37.6286, "address": "ул. Варварка, 6"},
+    ]
+    
+    # Event templates by category
+    event_templates = {
+        'concert': [
+            "Концерт классической музыки",
+            "Рок-концерт",
+            "Джазовый вечер",
+            "Симфонический оркестр",
+            "Концерт популярной музыки"
+        ],
+        'theater': [
+            "Спектакль 'Вишневый сад'",
+            "Комедия 'Ревизор'",
+            "Драма 'Три сестры'",
+            "Мюзикл 'Чикаго'",
+            "Детский спектакль"
+        ],
+        'exhibition': [
+            "Выставка современного искусства",
+            "Фотовыставка",
+            "Выставка живописи",
+            "Историческая экспозиция",
+            "Выставка скульптуры"
+        ],
+        'sport': [
+            "Футбольный матч",
+            "Баскетбольная игра",
+            "Хоккейный матч",
+            "Волейбольный турнир",
+            "Легкоатлетические соревнования"
+        ],
+        'festival': [
+            "Городской фестиваль",
+            "Фестиваль уличной еды",
+            "Музыкальный фестиваль",
+            "Фестиваль искусств",
+            "Культурный фестиваль"
+        ]
+    }
+    
+    imported = 0
+    errors = 0
+    
+    for category, templates in event_templates.items():
+        for i, template in enumerate(templates):
+            try:
+                venue = random.choice(venues)
+                days_offset = random.randint(1, 30)
+                start_time = datetime.now() + timedelta(days=days_offset, hours=random.randint(10, 20))
+                
+                # Check for duplicates
+                existing = db.query(Event).filter(
+                    Event.title == f"{template} (тест)",
+                    Event.source == 'manual',
+                    func.date(Event.start_time) == func.date(start_time)
+                ).first()
+                
+                if existing:
+                    continue
+                
+                new_event = Event(
+                    title=f"{template} (тест)",
+                    event_type=category,
+                    description=f"Тестовое событие для демонстрации. {template} в {venue['name']}.",
+                    geom=func.ST_SetSRID(func.ST_MakePoint(venue['lon'], venue['lat']), 4326),
+                    start_time=start_time,
+                    end_time=start_time + timedelta(hours=2),
+                    source='manual',
+                    source_url=None,
+                    image_url=None,
+                    price=random.choice(['Бесплатно', 'от 500 ₽', '300-800 ₽', 'от 1000 ₽', '1500-3000 ₽']),
+                    venue=venue['name'],
+                    city='moscow'
+                )
+            
+                db.add(new_event)
+                db.commit()
+                imported += 1
+                
+            except Exception as e:
+                logger.error(f"Error importing test event: {e}")
+                db.rollback()
+                errors += 1
+    
+    return {
+        "status": "success",
+        "source": "manual",
+        "statistics": {
+            "total": len([t for templates in event_templates.values() for t in templates]),
+            "imported": imported,
+            "duplicates": 0,
+            "errors": errors
+        },
+        "message": f"Импортировано {imported} тестовых событий для Москвы"
+    }
+
+# Новые endpoints с поддержкой городов
+
+# Получить события для конкретного города
+@router.get("/{city}/events", response_model=List[EventResponse])
+def get_city_events(
+    city: str,
+    event_type: Optional[str] = None,
+    upcoming_only: bool = True,
+    bounds: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Получить события для конкретного города"""
+    # Проверить, что город существует в конфигурации
+    from ..cities_config import CITIES
+    if city not in CITIES:
+        raise HTTPException(status_code=404, detail=f"Город '{city}' не найден")
     
     query = db.query(
         Event.id,
@@ -351,92 +560,112 @@ def get_events_by_district(
         Event.venue,
         Event.created_at
     ).filter(
-        func.ST_Within(Event.geom, District.geom),
-        District.id == district_id
+        Event.city == city,
+        Event.is_archived == False
     )
+    
+    # Фильтр по видимой области карты
+    if bounds:
+        try:
+            north, south, east, west = map(float, bounds.split(','))
+            query = query.filter(
+                func.ST_Within(
+                    Event.geom,
+                    func.ST_MakeEnvelope(west, south, east, north, 4326)
+                )
+            )
+        except ValueError:
+            pass  # Невалидные bounds - игнорируем
     
     if upcoming_only:
         query = query.filter(Event.start_time > datetime.utcnow())
     
+    if event_type:
+        query = query.filter(Event.event_type == event_type)
+    
     events = query.order_by(Event.start_time).all()
     
-    return {
-        "district_id": district_id,
-        "district_name": district.name,
-        "count": len(events),
-        "events": [
-            EventResponse(
-                id=evt.id,
-                title=evt.title,
-                event_type=evt.event_type,
-                description=evt.description,
-                lat=evt.lat,
-                lon=evt.lon,
-                start_time=evt.start_time,
-                end_time=evt.end_time,
-                source=evt.source,
-                source_url=evt.source_url,
-                image_url=evt.image_url,
-                price=evt.price,
-                venue=evt.venue,
-                created_at=evt.created_at
-            )
-            for evt in events
-        ]
-    }
-
-# Типы событий
-@router.get("/types")
-def get_event_types(db: Session = Depends(get_db)):
-    """Получить список типов событий"""
-    types = db.query(
-        Event.event_type,
-        func.count(Event.id).label('count')
-    ).group_by(Event.event_type).all()
-    
     return [
-        {"type": t[0], "count": t[1]}
-        for t in types
+        EventResponse(
+            id=evt.id,
+            title=evt.title,
+            event_type=evt.event_type,
+            description=evt.description,
+            lat=evt.lat,
+            lon=evt.lon,
+            start_time=evt.start_time,
+            end_time=evt.end_time,
+            source=evt.source,
+            source_url=evt.source_url,
+            image_url=evt.image_url,
+            price=evt.price,
+            venue=evt.venue,
+            created_at=evt.created_at
+        )
+        for evt in events
     ]
 
-# Импорт событий с Яндекс.Афиши
-@router.post("/import-afisha")
-def import_afisha_events(
-    city: str = Query("voronezh", description="Город для импорта"),
-    categories: Optional[List[str]] = Query(None, description="Категории событий"),
-    days_ahead: int = Query(30, description="Дней вперед"),
-    limit_per_category: int = Query(50, description="Лимит на категорию"),
-    geocoder_api_key: Optional[str] = Query(None, description="API ключ Yandex Geocoder"),
+# События в радиусе для конкретного города
+@router.get("/{city}/events/nearby")
+def get_city_nearby_events(
+    city: str,
+    lat: float = Query(...),
+    lon: float = Query(...),
+    radius: float = Query(1000, description="Радиус в метрах"),
+    event_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Импортировать события с Яндекс.Афиши
+    """Найти события в радиусе для конкретного города"""
+    # Проверить, что город существует в конфигурации
+    from ..cities_config import CITIES
+    if city not in CITIES:
+        raise HTTPException(status_code=404, detail=f"Город '{city}' не найден")
     
-    Параметры:
-    - city: Город (voronezh, moscow, spb и т.д.)
-    - categories: Список категорий (concert, theatre, exhibition, sport, festival)
-    - days_ahead: Количество дней вперед для импорта
-    - limit_per_category: Максимум событий на категорию
-    - geocoder_api_key: API ключ для геокодирования адресов (опционально)
-    """
-    from ..scrapers.yandex_afisha import scrape_and_import_yandex_events
+    user_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
     
-    try:
-        stats = scrape_and_import_yandex_events(
-            city=city,
-            categories=categories,
-            geocoder_api_key=geocoder_api_key,
-            days_ahead=days_ahead,
-            limit_per_category=limit_per_category
+    query = db.query(
+        Event.id,
+        Event.title,
+        Event.event_type,
+        Event.description,
+        func.ST_X(Event.geom).label('lon'),
+        func.ST_Y(Event.geom).label('lat'),
+        Event.start_time,
+        Event.end_time,
+        func.ST_Distance(
+            func.ST_Transform(Event.geom, 3857),
+            func.ST_Transform(user_point, 3857)
+        ).label('distance')
+    ).filter(
+        Event.city == city,
+        Event.is_archived == False,
+        func.ST_DWithin(
+            func.ST_Transform(Event.geom, 3857),
+            func.ST_Transform(user_point, 3857),
+            radius
         )
-        
-        return {
-            "status": "success",
-            "message": f"Импорт завершен: {stats['imported']} событий добавлено",
-            "statistics": stats
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при импорте событий: {str(e)}"
-        )
+    )
+    
+    if event_type:
+        query = query.filter(Event.event_type == event_type)
+    
+    results = query.order_by(text('distance')).all()
+    
+    return {
+        "city": city,
+        "count": len(results),
+        "events": [
+            {
+                "id": evt.id,
+                "title": evt.title,
+                "event_type": evt.event_type,
+                "description": evt.description,
+                "lat": evt.lat,
+                "lon": evt.lon,
+                "start_time": evt.start_time,
+                "end_time": evt.end_time,
+                "distance": round(evt.distance, 2)
+            }
+            for evt in results
+        ]
+    }

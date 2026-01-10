@@ -8,8 +8,7 @@ let selectedEventTypes = [];
 let selectedSources = [];
 let allEvents = [];
 let layers = {
-    events: L.layerGroup(),
-    districts: L.layerGroup()
+    events: L.layerGroup()
 };
 
 const mapStyles = {
@@ -114,14 +113,13 @@ const eventIcons = {
 };
 
 async function initMap() {
-    // Создание карты (Воронеж по умолчанию)
-    map = L.map('map').setView([51.6606, 39.2003], 13);
+    // Создание карты (Москва по умолчанию)
+    map = L.map('map').setView([55.7558, 37.6173], 11);
 
     // Установка начального стиля карты
     setMapStyle('osm');
 
     layers.events.addTo(map);
-    layers.districts.addTo(map);
 
     map.on('click', onMapClick);
 
@@ -141,7 +139,6 @@ async function initMap() {
     await loadCities();
 
     loadEvents();
-    await loadDistrictsWithRetry();
 
     // Инициализация селектора стиля карты
     initMapStyleSelector();
@@ -543,8 +540,6 @@ function onMapClick(e) {
         }).addTo(map);
         userMarker.bindPopup('Ваше местоположение').openPopup();
     }
-
-    findDistrict(lat, lon);
 }
 
 async function loadEvents(type = null, source = null, upcomingOnly = false) {
@@ -555,105 +550,6 @@ async function loadEvents(type = null, source = null, upcomingOnly = false) {
     } catch (error) {
         console.error('Ошибка загрузки событий:', error);
         showError('Не удалось загрузить события');
-    }
-}
-
-async function loadDistricts() {
-    try {
-        console.log('Начинаю загрузку районов...');
-        const districts = await api.getDistricts();
-        
-        if (!districts || !Array.isArray(districts)) {
-            console.error('Получены некорректные данные районов:', districts);
-            showError('Ошибка загрузки районов: некорректные данные');
-            return;
-        }
-        
-        console.log(`Получено районов от API: ${districts.length}`);
-        layers.districts.clearLayers();
-        
-        districts.forEach((district, index) => {
-            try {
-                if (!district.geometry || !district.name) {
-                    console.warn(`Район ${index} пропущен - отсутствуют необходимые поля:`, district);
-                    return;
-                }
-                
-                const geoJsonLayer = L.geoJSON(district.geometry, {
-                    style: {
-                        color: '#667eea',
-                        weight: 2,
-                        fillOpacity: 0.1
-                    },
-                    onEachFeature: function (feature, layer) {
-                        layer.on('error', function(e) {
-                            console.error(`Ошибка отображения района "${district.name}":`, e);
-                        });
-                    }
-                });
-                
-                geoJsonLayer.bindPopup(`
-                    <b>${district.name}</b><br>
-                    Население: ${district.population ? district.population.toLocaleString() : 'Не указано'}
-                `);
-                
-                geoJsonLayer.on('click', async () => {
-                    await showDistrictStats(district.id);
-                });
-                
-                geoJsonLayer.addTo(layers.districts);
-                
-            } catch (error) {
-                console.error(`Ошибка обработки района ${index} (${district.name}):`, error);
-            }
-        });
-
-        console.log(`Загружено районов: ${districts.length}`);
-        
-        if (!map.hasLayer(layers.districts)) {
-            map.addLayer(layers.districts);
-            console.log('Слой районов добавлен на карту');
-        }
-        
-    } catch (error) {
-        console.error('Ошибка загрузки районов:', error);
-        showError('Не удалось загрузить районы: ' + error.message);
-    }
-}
-
-async function loadDistrictsWithRetry(maxRetries = 3, retryDelay = 2000) {
-    let retryCount = 0;
-    let lastError = null;
-    
-    while (retryCount < maxRetries) {
-        try {
-            console.log(`Попытка загрузки районов (${retryCount + 1}/${maxRetries})`);
-            await loadDistricts();
-            
-            if (layers.districts.getLayers().length > 0) {
-                console.log('Районы успешно загружены');
-                return;
-            } else {
-                console.warn('Районы загрузились, но слой пуст');
-                lastError = new Error('Слой районов пуст после загрузки');
-            }
-        } catch (error) {
-            lastError = error;
-            console.error(`Ошибка при попытке ${retryCount + 1}:`, error);
-        }
-        
-        retryCount++;
-        
-        if (retryCount < maxRetries) {
-            console.log(`Повторная попытка через ${retryDelay} мс...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            retryDelay *= 1.5;
-        }
-    }
-    
-    if (lastError) {
-        console.error(`Не удалось загрузить районы после ${maxRetries} попыток:`, lastError);
-        showError(`Не удалось загрузить районы.`);
     }
 }
 
@@ -683,59 +579,98 @@ function focusOnEvent(lat, lon) {
     map.setView([lat, lon], 16);
 }
 
-async function importFromAfisha() {
-    displayResults('<h4>Импорт событий...</h4><p>Пожалуйста, подождите...</p>');
+async function importFromKudaGo() {
+    const city = currentCity ? currentCity.slug : 'voronezh';
+    const cityName = currentCity ? currentCity.name : 'Воронеж';
+    
+    displayResults(`<h4>Импорт из KudaGo для ${cityName}...</h4><p>Загружаем события...<br>Пожалуйста, подождите...</p>`);
     
     try {
-        const result = await api.importFromAfisha('voronezh', null, 30, 50);
-        
-        displayResults(`
-            <h4>✅ Импорт завершен</h4>
-            <p><strong>Всего обработано:</strong> ${result.statistics.total}</p>
-            <p><strong>Импортировано:</strong> ${result.statistics.imported}</p>
-            <p><strong>Дубликатов:</strong> ${result.statistics.duplicates}</p>
-            <p><strong>Ошибок:</strong> ${result.statistics.errors}</p>
-            ${result.statistics.skipped_no_coords ? `<p><strong>Пропущено (нет координат):</strong> ${result.statistics.skipped_no_coords}</p>` : ''}
-        `);
-        
+        const result = await api.importKudaGoEvents(city, null, 30);
+        displayImportResult(result, 'KudaGo');
         await loadEvents();
-        
     } catch (error) {
-        console.error('Ошибка импорта:', error);
-        showError('Ошибка при импорте событий с Яндекс.Афиши');
+        console.error('Ошибка импорта KudaGo:', error);
+        showError(`Ошибка при импорте событий из KudaGo для ${cityName}`);
     }
 }
 
-async function findDistrict(lat, lon) {
+async function importFromYandex() {
+    const city = currentCity ? currentCity.slug : 'voronezh';
+    const cityName = currentCity ? currentCity.name : 'Воронеж';
+    
+    displayResults(`<h4>Импорт из Яндекс.Афиши для ${cityName}...</h4><p>Загружаем события...<br>Пожалуйста, подождите...</p>`);
+    
     try {
-        const result = await api.findDistrictByPoint(lat, lon);
-        showInfo(`Вы находитесь в районе: <b>${result.name}</b>`);
+        const result = await api.importYandexEvents(city, null, 30);
+        displayImportResult(result, 'Яндекс.Афиша');
+        await loadEvents();
     } catch (error) {
-        console.log('Точка не принадлежит ни одному району');
+        console.error('Ошибка импорта Яндекс.Афиши:', error);
+        showError(`Ошибка при импорте событий из Яндекс.Афиши для ${cityName}`);
     }
 }
 
-async function showDistrictStats(districtId) {
+async function importTestMoscow() {
+    displayResults(`<h4>Импорт тестовых данных для Москвы...</h4><p>Создаем тестовые события...<br>Пожалуйста, подождите...</p>`);
+    
     try {
-        const stats = await api.getDistrictStats(districtId);
-        
-        const eventsList = Object.entries(stats.events)
-            .map(([type, count]) => `${getEventTypeRu(type)}: ${count}`)
-            .join('<br>');
+        const result = await api.importTestMoscowEvents();
+        displayImportResult(result, 'Тестовые данные (Москва)');
+        await loadEvents();
+    } catch (error) {
+        console.error('Ошибка импорта тестовых данных:', error);
+        showError('Ошибка при импорте тестовых данных для Москвы');
+    }
+}
 
-        displayResults(`
-            <h4>Статистика: ${stats.district}</h4>
-            <p><b>Население:</b> ${stats.population?.toLocaleString() || 'Не указано'}</p>
-            <p><b>Площадь:</b> ${stats.area_km2} км²</p>
-            <p><b>Событий:</b> ${stats.total_events}</p>
-            <div style="margin-left: 10px; font-size: 0.9em;">
-                ${eventsList || 'Нет данных'}
+function displayImportResult(result, sourceName) {
+    const stats = result.statistics;
+    const sourceClass = result.source === 'manual' ? 'manual' : result.source === 'yandex_afisha' ? 'yandex' : 'kudago';
+    
+    let resultsHtml = `
+        <div class="import-result">
+            <h4><i class="fas fa-check-circle"></i> Импорт завершен</h4>
+            <span class="source-badge ${sourceClass}">${sourceName}</span>
+            
+            <div class="import-stats">
+                <div class="stat-item success">
+                    <div class="stat-label">Импортировано</div>
+                    <div class="stat-value">${stats.imported}</div>
+                </div>
+                <div class="stat-item warning">
+                    <div class="stat-label">Дубликатов</div>
+                    <div class="stat-value">${stats.duplicates}</div>
+                </div>
+    `;
+    
+    if (stats.errors > 0) {
+        resultsHtml += `
+                <div class="stat-item error">
+                    <div class="stat-label">Ошибок</div>
+                    <div class="stat-value">${stats.errors}</div>
+                </div>
+        `;
+    }
+    
+    if (stats.skipped_no_coords) {
+        resultsHtml += `
+                <div class="stat-item warning">
+                    <div class="stat-label">Без координат</div>
+                    <div class="stat-value">${stats.skipped_no_coords}</div>
+                </div>
+        `;
+    }
+    
+    resultsHtml += `
             </div>
-        `);
-    } catch (error) {
-        console.error('Ошибка получения статистики:', error);
-        showError('Не удалось загрузить статистику района');
-    }
+            <p style="margin-top: 15px; color: var(--text-secondary); font-size: 13px;">
+                ${result.message}
+            </p>
+        </div>
+    `;
+    
+    displayResults(resultsHtml);
 }
 
 function displayResults(html) {
@@ -767,6 +702,7 @@ function getEventTypeRu(type) {
 function getSourceRu(source) {
     const sources = {
         yandex_afisha: 'Яндекс.Афиша',
+        kudago: 'KudaGo',
         manual: 'Ручной ввод',
         telegram: 'Telegram'
     };
@@ -788,7 +724,7 @@ async function loadCities() {
             option.dataset.lon = city.lon;
             option.dataset.zoom = city.zoom;
             
-            if (city.slug === 'voronezh') {
+            if (city.slug === 'moscow') {
                 option.selected = true;
                 currentCity = city;
             }
@@ -827,33 +763,6 @@ async function changeCity() {
     };
     
     await loadEvents();
-    
-    try {
-        await loadDistricts();
-        
-        const mapBounds = map.getBounds();
-        const districtsInView = layers.districts.getLayers().filter(layer => {
-            const layerBounds = layer.getBounds();
-            return layerBounds && mapBounds.intersects(layerBounds);
-        });
-        
-        if (districtsInView.length === 0) {
-            console.log(`Районы для города ${cityName} не найдены в области видимости, начинаем загрузку...`);
-            showInfo(`Загрузка районов для города ${cityName}...`);
-            
-            const result = await api.importDistrictsFromOSM(cityName, 'Россия');
-            
-            if (result.success && result.statistics.imported > 0) {
-                showInfo(`Успешно загружено ${result.statistics.imported} районов для города ${cityName}`);
-                await loadDistricts();
-            } else {
-                showError(`Не удалось загрузить районы для города ${cityName}`);
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка при проверке/загрузке районов:', error);
-        showError('Ошибка при загрузке районов');
-    }
     
     console.log(`Выбран город: ${cityName}`);
 }

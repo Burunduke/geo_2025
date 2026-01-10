@@ -32,15 +32,6 @@ class EventResponse(EventBase):
     class Config:
         from_attributes = True
 
-class DistrictResponse(BaseModel):
-    id: int
-    name: str
-    population: Optional[int]
-    geometry: dict  # GeoJSON
-    
-    class Config:
-        from_attributes = True
-
 class NearbyEventsRequest(BaseModel):
     lat: float
     lon: float
@@ -62,33 +53,6 @@ class TelegramUserResponse(TelegramUserBase):
     is_active: bool
     created_at: datetime
     last_interaction: datetime
-    
-    class Config:
-        from_attributes = True
-
-class UserSubscriptionBase(BaseModel):
-    district_id: int
-    notification_time: str = "09:00"
-
-class UserSubscriptionCreate(UserSubscriptionBase):
-    user_id: int
-
-class UserSubscriptionResponse(UserSubscriptionBase):
-    id: int
-    user_id: int
-    is_active: bool
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-class SubscriptionWithDistrict(BaseModel):
-    id: int
-    district_id: int
-    district_name: str
-    notification_time: str
-    is_active: bool
-    created_at: datetime
     
     class Config:
         from_attributes = True

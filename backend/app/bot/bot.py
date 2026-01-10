@@ -9,10 +9,6 @@ import os
 from .handlers import (
     start_command,
     help_command,
-    districts_command,
-    subscribe_command,
-    unsubscribe_command,
-    myareas_command,
     events_command,
     tomorrow_command,
     week_command
@@ -53,10 +49,6 @@ async def start_bot():
     application.add_handler(CommandHandler("today", events_command))  # Alias for events
     application.add_handler(CommandHandler("tomorrow", tomorrow_command))
     application.add_handler(CommandHandler("week", week_command))
-    application.add_handler(CommandHandler("districts", districts_command))
-    application.add_handler(CommandHandler("subscribe", subscribe_command))
-    application.add_handler(CommandHandler("unsubscribe", unsubscribe_command))
-    application.add_handler(CommandHandler("myareas", myareas_command))
     
     # Setup scheduler for daily notifications
     scheduler = AsyncIOScheduler()

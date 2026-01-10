@@ -15,11 +15,15 @@ class Event(Base):
     start_time = Column(DateTime, nullable=False, index=True)
     end_time = Column(DateTime)
     source = Column(String(50), default='manual', index=True)  # yandex_afisha, manual, telegram
+    source_id = Column(String(100), index=True)  # Уникальный ID из источника
     source_url = Column(String(500))
     image_url = Column(String(500))
     price = Column(String(100))
     venue = Column(String(255))
+    city = Column(String(50), nullable=False, index=True)  # Город события
+    last_updated = Column(DateTime, default=datetime.utcnow)  # Время последнего обновления
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_archived = Column(Boolean, default=False)  # Мягкое удаление
 
 class TelegramUser(Base):
     __tablename__ = "telegram_users"

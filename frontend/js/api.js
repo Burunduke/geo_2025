@@ -51,11 +51,6 @@ class CityGeoAPI {
         return this.request(`/events/filter/upcoming?${params}`);
     }
 
-    async getEventsByDistrict(districtId, upcomingOnly = false) {
-        const params = upcomingOnly ? '?upcoming_only=true' : '';
-        return this.request(`/events/by-district/${districtId}${params}`);
-    }
-
     async getNearbyEvents(lat, lon, radius, type = null) {
         const params = new URLSearchParams({ lat, lon, radius });
         if (type) params.append('event_type', type);
@@ -73,49 +68,38 @@ class CityGeoAPI {
         return this.request('/events/types');
     }
 
-    async importFromAfisha(city = 'voronezh', categories = null, daysAhead = 30, limitPerCategory = 50) {
-        const params = new URLSearchParams({ 
-            city, 
-            days_ahead: daysAhead,
-            limit_per_category: limitPerCategory
+    async importKudaGoEvents(city = 'voronezh', categories = null, daysAhead = 30) {
+        const params = new URLSearchParams({
+            city,
+            days_ahead: daysAhead
         });
         
         if (categories && categories.length > 0) {
             categories.forEach(cat => params.append('categories', cat));
         }
         
-        return this.request(`/events/import-afisha?${params}`, {
+        return this.request(`/events/import/kudago?${params}`, {
             method: 'POST'
         });
     }
 
-    // Районы
-    
-    async getDistricts() {
-        return this.request('/districts/');
+    async importYandexEvents(city = 'voronezh', categories = null, daysAhead = 30) {
+        const params = new URLSearchParams({
+            city,
+            days_ahead: daysAhead
+        });
+        
+        if (categories && categories.length > 0) {
+            categories.forEach(cat => params.append('categories', cat));
+        }
+        
+        return this.request(`/events/import/yandex?${params}`, {
+            method: 'POST'
+        });
     }
 
-    async findDistrictByPoint(lat, lon) {
-        const params = new URLSearchParams({ lat, lon });
-        return this.request(`/districts/find?${params}`);
-    }
-
-    async getDistrictStats(districtId) {
-        return this.request(`/districts/${districtId}/stats`);
-    }
-
-    async getDistrictBuffer(districtId, radius = 500) {
-        return this.request(`/districts/${districtId}/buffer?radius=${radius}`);
-    }
-
-    async getIntersectingDistricts(lat, lon, radius = 1000) {
-        const params = new URLSearchParams({ lat, lon, radius });
-        return this.request(`/districts/intersect?${params}`);
-    }
-
-    async importDistrictsFromOSM(city = 'Воронеж', country = 'Россия') {
-        const params = new URLSearchParams({ city, country });
-        return this.request(`/districts/import-osm?${params}`, {
+    async importTestMoscowEvents() {
+        return this.request('/events/import/test-moscow', {
             method: 'POST'
         });
     }
@@ -126,10 +110,22 @@ class CityGeoAPI {
         return this.request('/cities');
     }
 
-    // Проверка состояния районов
+    // Новые методы с поддержкой городов
     
-    async checkDistrictsHealth() {
-        return this.request('/districts/health');
+    async getCityEvents(city, options = {}) {
+        const params = new URLSearchParams();
+        if (options.eventType) params.append('event_type', options.eventType);
+        if (options.upcomingOnly) params.append('upcoming_only', 'true');
+        if (options.bounds) params.append('bounds', options.bounds);
+        
+        const query = params.toString() ? `?${params}` : '';
+        return this.request(`/${city}/events${query}`);
+    }
+    
+    async getCityNearbyEvents(city, lat, lon, radius, eventType = null) {
+        const params = new URLSearchParams({ lat, lon, radius });
+        if (eventType) params.append('event_type', eventType);
+        return this.request(`/${city}/events/nearby?${params}`);
     }
 }
 
